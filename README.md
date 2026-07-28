@@ -1,286 +1,330 @@
-# 👹 Samurai Telegram Bot
-![Samurai Telegram Bot](https://i.imgur.com/S9BPDMt.jpeg "te")
-Simple, yet effective **auto-moderator bot for telegram**.  
-With reports, logs, profanity filter, anti-spam AI, NSFW detection, reputation system and more :3
+# 🐱 Шишка-бот Telegram
+![Шишка-бот](https://i.imgur.com/S9BPDMt.jpeg "te")
 
-## What samurai do?
+Простой, но эффективный **автоматический модератор для Telegram**.  
+С репортами, логами, фильтром мата, ИИ для анти-спама, обнаружением NSFW, системой репутации и не только :3
 
-- **Anti-Profanity**: Automatically detects and removes messages containing profanity (Russian/English)
-- **Anti-Spam**: ML-based spam detection for new users
-- **NSFW Detection**: Profile photo analysis for NSFW accounts
-- **Reputation System**: Users gain reputation through positive participation
-- **Report System**: Users can report messages to admins
-- **Scheduled Announcements**: Periodic automated messages
+---
 
-## Code Hierarchy
+## Что умеет Шишка-бот?
 
-```
-samurai/
-├── bot.py                 # Main entry point
+- **Анти-мат**: Автоматически обнаруживает и удаляет сообщения с матом (русский/английский)
+- **Анти-спам**: ML-детекция спама от новых пользователей
+- **NSFW-детекция**: Проверка фото в чате и аватаров
+- **Система репутации**: Пользователи получают репутацию за активность
+- **Система репортов**: Пользователи могут жаловаться на сообщения админам
+- **Плановые объявления**: Периодические автоматические сообщения
+- **Анти-бот**: Автоматическое удаление ботов без прав администратора (с белым списком) 🆕
+- **Система фото кошек**: Случайные фото Шишки с возможностью загрузки админами 🐱🆕
+
+---
+
+## 🆕 Новые функции в этой версии
+
+### 🐱 Команда `шишка`
+
+Любой пользователь может получить случайное фото кошки из базы:
+
+| Команда | Описание |
+|---------|----------|
+| `шишка` / `shishka` / `кошка` / `cat` | Случайное фото кошки 🐱 |
+| `/add_shishka` | Добавить фото (ответом на фото) — админы |
+| `/del_shishka <ID>` | Удалить фото по ID — админы |
+| `/list_shishka` | Список всех фото — админы |
+
+### 🛡️ Белый список ботов
+
+Боты из белого списка **никогда не удаляются**, даже без прав администратора.
+
+Настройка в `.env`:
+```env
+BOT_WHITELIST=123456789,987654321
+👋 Приветствия с Шишкой
+При входе нового пользователя:
+
+Удаляется служебное сообщение
+
+Отправляется случайное приветствие с упоминанием Шишки
+
+Если в базе есть фото — отправляется случайное фото
+
+Кнопки: 📋 Правила и 🐱 Ещё Шишку!
+
+Структура кода
+text
+shishka-bot/
+├── bot.py                 # Главная точка входа
 ├── config/
 │   ├── __init__.py
-│   ├── settings.py        # Pydantic configuration
-│   └── config.toml        # Configuration file
+│   ├── settings.py        # Pydantic конфигурация
+│   └── config.toml        # Файл настроек
 ├── core/
 │   ├── __init__.py
-│   └── i18n.py            # Fluent internationalization
+│   └── i18n.py            # Fluent интернационализация
 ├── db/
 │   ├── __init__.py
-│   ├── database.py        # Database setup
+│   ├── database.py        # Настройка БД
 │   └── models/
-│       ├── member.py      # Member model
-│       └── spam.py        # Spam record model
+│       ├── member.py      # Модель участника
+│       ├── spam.py        # Модель спам-записи
+│       └── cat_photo.py   # Модель фото кошки 🆕
 ├── filters/
 │   ├── is_owner.py
 │   ├── is_admin.py
 │   ├── throttle.py
-│   └── .. other useful filters
+│   └── .. другие полезные фильтры
 ├── handlers/
-│   ├── admin_actions.py   # Ban/unban commands
-│   ├── callbacks.py       # Inline button handlers
-│   ├── exceptions.py      # Error handler
-│   ├── group_events.py    # Main message processing
-│   ├── personal_actions.py# Ping, profanity check
-│   └── user_actions.py    # Report command
+│   ├── admin_actions.py   # Команды бана/разбана
+│   ├── callbacks.py       # Обработчики инлайн-кнопок
+│   ├── exceptions.py      # Обработчик ошибок
+│   ├── group_events.py    # Основная обработка сообщений
+│   ├── personal_actions.py# Пинг, проверка мата
+│   ├── user_actions.py    # Команда репорта
+│   └── cat_commands.py    # Команды для фото кошек 🆕
 ├── locales/
 │   ├── en/
-│   │   ├── strings.ftl    # English translations
+│   │   ├── strings.ftl    # Английские переводы
 │   │   └── announcements.ftl
 │   └── ru/
-│       ├── strings.ftl    # Russian translations
+│       ├── strings.ftl    # Русские переводы
 │       └── announcements.ftl
 ├── middlewares/
 │   ├── __init__.py
-│   ├── throttling.py      # Middleware for rate limiting
-│   └── i18n.py            # I18n middleware
+│   ├── throttling.py      # Мидлварь для ограничения запросов
+│   └── i18n.py            # I18n мидлварь
 ├── services/
-│   ├── announcements.py   # Scheduled announcements
-│   ├── cache.py           # LRU caching
-│   ├── gender.py          # Gender detection
-│   ├── nsfw.py            # NSFW detection
-│   ├── profanity.py       # Profanity detection
-│   ├── healthcheck.py     # Healthcheck server for containers orchestration
-│   ├── ml_manager.py      # Unloads unused ML models from memory after some time
-│   └── spam.py            # Spam detection
+│   ├── announcements.py   # Плановые объявления
+│   ├── cache.py           # LRU кэширование
+│   ├── gender.py          # Определение пола
+│   ├── nsfw.py            # NSFW детекция
+│   ├── profanity.py       # Детекция мата
+│   ├── healthcheck.py     # Сервер healthcheck для оркестрации
+│   ├── ml_manager.py      # Выгрузка неиспользуемых ML моделей
+│   └── spam.py            # Спам-детекция
 ├── utils/
-│   ├── helpers.py         # Utility functions
-│   ├── enums.py           # Some useful enums to keep the codebase consistent
-│   └── localization.py    # Localization exports
-├── libs/                  # External libraries (censure, gender_extractor)
-├── ruspam_model/          # ML model for spam detection
+│   ├── helpers.py         # Вспомогательные функции
+│   ├── enums.py           # Полезные енумы
+│   └── localization.py    # Экспорты локализации
+├── libs/                  # Внешние библиотеки (censure, gender_extractor)
+├── ruspam_model/          # ML модель для спама (~328 MB)
+├── nsfw_model/            # ML модель для NSFW (~3.55 GB) 🆕
 ├── requirements.txt
 ├── Dockerfile
-├── config.py              # Configuration of the bot
-├── db_init.py             # Use this to initialize your database tables
+├── config.py              # Конфигурация бота
+├── db_init.py             # Инициализация таблиц БД
+├── download_model.py      # Скачивание спам-модели 🆕
+├── download_nsfw_model.py # Скачивание NSFW-модели 🆕
+├── download_all_models.py # Скачивание всех моделей 🆕
 └── .env.example
-```
+Интернационализация (i18n)
+Бот использует Project Fluent для переводов.
 
-## Internationalization (i18n)
-
-The bot uses [Project Fluent](https://projectfluent.org/) for translations.
-
-### Usage in handlers
-
-```python
-# Method 1: Import _ function directly
+Использование в обработчиках
+python
+# Способ 1: Импорт функции _ напрямую
 from core.i18n import _
 
 async def handler(message: Message) -> None:
     text = _("error-no-reply")
     await message.reply(text)
 
-# Method 2: Use i18n from middleware (user's locale)
+# Способ 2: Использование i18n из мидлвари (локаль пользователя)
 async def handler(message: Message, i18n: Callable) -> None:
     text = i18n("error-no-reply")
     await message.reply(text)
 
-# With variables
+# С переменными
 text = _("report-message", date="2024-01-01", chat_id="123", msg_id="456")
-```
+Добавление новых переводов
+Создайте/отредактируйте .ftl файлы в locales/{lang}/
 
-### Adding new translations
+Используйте ключи через дефис: error-no-reply
 
-1. Create/edit `.ftl` files in `locales/{lang}/`
-2. Use hyphenated keys: `error-no-reply`
-3. Variables use `{ $var }` syntax
+Переменные используют синтаксис { $var }
 
-Example `locales/ru/strings.ftl`:
-```fluent
+Пример locales/ru/strings.ftl:
+
+fluent
 error-no-reply = Эта команда должна быть ответом на сообщение!
 report-message = 👆 Отправлено { $date }
     <a href="https://t.me/c/{ $chat_id }/{ $msg_id }">Перейти</a>
-```
 
-## Installation
+# Приветствия с Шишкой 🐱
+welcome-v1 = 👋 { $username }, добро пожаловать! 🐱 Наша кошка Шишка уже ждёт новых друзей! 🎉
+Установка
+Требования
+Python 3.11+
 
-### Prerequisites
+Токен бота от @BotFather
 
-- Python 3.11+ is required
-- Bot token from [@BotFather](https://t.me/BotFather)
+~4 ГБ свободного места для ML моделей
 
-### Setup process
+Процесс установки
+Клонируйте репозиторий:
 
-1. Clone the repository
+bash
+git clone https://github.com/Luno-o/shishka_bot.git
+cd shishka_bot
+Создайте виртуальное окружение:
 
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+bash
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+venv\Scripts\activate     # Windows
+Установите зависимости:
 
-3. Copy `.env.example` to `.env` and fill in your values:
-   ```bash
-   cp .env.example .env
-   ```
+bash
+pip install -r requirements.txt
+Скопируйте .env.example в .env и заполните значения:
 
-4. Configure `config.toml` with your group IDs and other settings how you like
+bash
+cp .env.example .env
+Настройте config.toml под свои нужды.
 
-5. Run the bot:
-   ```bash
-   python bot.py
-   ```
+Скачайте ML модели (они НЕ включены в репозиторий):
 
-6. Enjoy!
+bash
+# Скачать все модели (рекомендуется)
+python download_all_models.py
 
-### Environment Variables in Production
+# Или по отдельности:
+python download_model.py      # Спам-модель (~328 MB)
+python download_nsfw_model.py # NSFW-модель (~3.55 GB)
+Инициализируйте базу данных:
 
-For production deployments, you can also set environment variables directly instead of using `.env` file:
+bash
+# Откройте db_init.py и закомментируйте exit()
+python db_init.py
+Запустите бота:
 
-```bash
-# Export variables directly
+bash
+python bot.py
+Переменные окружения в продакшене
+bash
+# Экспорт переменных напрямую
 export BOT_TOKEN="your_bot_token"
 export BOT_OWNER="your_user_id"
 export GROUPS_MAIN="-1001234567890"
+export BOT_WHITELIST="123456789,987654321"  # ID ботов, которых не трогать 🆕
 export DB_URL="sqlite:///./samurai.db"
 
-# Or pass them inline
+# Или передача строкой
 BOT_TOKEN="..." BOT_OWNER="..." python bot.py
-```
+Для systemd сервисов, добавьте их в unit файл:
 
-For **systemd** services, add them to the unit file:
-```ini
+ini
 [Service]
 Environment="BOT_TOKEN=your_token"
 Environment="BOT_OWNER=123456789"
-```
+Environment="BOT_WHITELIST=123456789,987654321"
+Для Docker, используйте флаги -e или --env-file:
 
-For **Docker**, use `-e` flags or `--env-file`:
-```bash
-docker run -e BOT_TOKEN="..." -e BOT_OWNER="..." samurai-bot
-# or
-docker run --env-file .env samurai-bot
-```
+bash
+docker run -e BOT_TOKEN="..." -e BOT_OWNER="..." shishka-bot
+# или
+docker run --env-file .env shishka-bot
+Инициализация базы данных
+⚠️ ВНИМАНИЕ: Этот скрипт УДАЛИТ ВСЕ ДАННЫЕ в таблицах!
 
-### Database Initialization
-
-The `db_init.py` script can be used to create or recreate database tables.
-
-⚠️ **WARNING**: This script will **DROP ALL DATA** in the tables!  
-Make sure to backup first if running on an existing database.
-
-```bash
-# 1. Open db_init.py and comment out or delete this line:
+bash
+# 1. Откройте db_init.py и закомментируйте строку:
 #    exit("COMMENT THIS LINE IN ORDER TO RE-INIT DATABASE TABLES")
 
-# 2. Run the script
+# 2. Запустите скрипт
 python db_init.py
 
-# 3. Uncomment the exit() line again to prevent accidental runs or just delete this file after usage
-```
+# 3. Верните exit() обратно
+Docker
+bash
+docker build -t shishka-bot .
+docker run -d --name shishka-bot -v $(pwd)/config.toml:/app/config.toml shishka-bot
+Использование RAM
+В данный момент бот использует ~800 МБ RAM для ML моделей и кэширования данных.
+~~Возможно, мы могли бы снизить использование RAM, внедрив ONNX runtime модели, но это планы на будущее.~~
+Это не сработало, единственное жизнеспособное решение — квантование моделей :3
 
-Use this script **ONLY** when:
-- Setting up the bot for the first time
-- Migrating to a new database
-- Resetting all data *(development only)*
+Если ваш сервер не справляется и процесс убивается с ошибкой Out of memory, простое решение — добавить swap:
 
-### Docker
-
-```bash
-docker build -t samurai-bot .
-docker run -d --name samurai-bot -v $(pwd)/config.toml:/app/config.toml samurai-bot
-```
-
-## RAM usage
-
-Currently bot uses ~800mb of RAM for ML models and for data caching.  
-~~Probably we could reduce ML models RAM usage by implementing ONNX runtime models, but that's plans for future updates.~~  
-That ain't worked, the only viable solution would be to quantize the models :3
-
-For now, if your server doesn't handle and the process being killed with *Out of memory (`dmesg | grep -i "killed process"`)*,
-simple solution is to add swap:
-```bash
-# Create 2GB swap file
+bash
+# Создать swap файл на 2 ГБ
 fallocate -l 2G /swapfile
 chmod 600 /swapfile
 mkswap /swapfile
 swapon /swapfile
 
-# Make permanent
+# Сделать постоянным
 echo '/swapfile none swap sw 0 0' >> /etc/fstab
-```
+Конфигурация
+Переменные окружения
+Переменная	Описание
+BOT_TOKEN	Токен бота Telegram
+BOT_OWNER	Telegram ID владельца
+BOT_WHITELIST	ID ботов, которых никогда не удалять (через запятую) 🆕
+GROUPS_MAIN	ID основной группы (можно через запятую)
+GROUPS_REPORTS	ID группы для репортов
+GROUPS_LOGS	ID группы для логов
+LINKED_CHANNEL	ID связанного канала (можно через запятую)
+DB_URL	URL базы данных
+PROXY_URL	URL прокси (http/socks5)
+PROXY_ENABLED	Включить прокси (true/false)
+Встроенные команды
+Пользовательские команды
+Команда	Описание
+!rules / /rules	Показать правила чата
+!report / /report	Пожаловаться на сообщение (ответом)
+!me / !info	Показать информацию о пользователе
+!бу	Развлекательная команда (бот притворяется испуганным)
+@admin	Вызвать внимание админов
+шишка / shishka / кошка / cat	Случайное фото кошки 🐱🆕
+Административные команды
+Команда	Описание
+!ban	Забанить пользователя (ответом)
+!unban	Разбанить пользователя (ответом)
+!ping	Проверить статус бота
+!prof <текст>	Проверить текст на мат
+/add_shishka	Добавить фото кошки (ответом на фото) 🆕
+/del_shishka <ID>	Удалить фото кошки 🆕
+/list_shishka	Список всех фото кошек 🆕
+Команды владельца
+Команда	Описание
+!spam	Отметить сообщение как спам (ответом)
+!reward <очки>	Добавить очки репутации
+!punish <очки>	Отнять очки репутации
+!setlvl <уровень>	Установить уровень пользователя
+!rreset	Сбросить репутацию пользователя
+!msg <текст>	Отправить сообщение от бота
+!chatid	Получить ID текущего чата
+!reload	Перезагрузить объявления из файлов локализации
+!log <текст>	Записать тестовый лог
+Внешние библиотеки
+Бот использует две внешние библиотеки в папке libs/:
 
-## Configuration
+censure: Детекция мата (русский/английский)
 
-### Environment Variables
+gender_extractor: Определение пола по имени
 
-| Variable | Description |
-|----------|-------------|
-| `BOT_TOKEN` | Telegram bot token |
-| `BOT_OWNER` | Owner's Telegram user ID |
-| `GROUPS_MAIN` | Main group chat ID __(can be a comma separated list)__ |
-| `GROUPS_REPORTS` | Reports group chat ID |
-| `GROUPS_LOGS` | Logs group chat ID |
-| `LINKED_CHANNEL` | Linked channel ID __(can be a comma separated list)__ |
-| `DB_URL` | Database URL |
+Благодарности
+https://github.com/masteroncluster/py-censure — Фильтр мата
 
-## Built-in Commands
+https://github.com/MasterGroosha/telegram-report-bot — Система репортов
 
-### User Commands
+https://huggingface.co/RUSpam/spam_deberta_v4 — ML модель для спама
 
-| Command | Description |
-|---------|-------------|
-| `!rules` / `/rules` | Request the chat rules |
-| `!report` / `/report` | Report a message (reply) |
-| `!me` / `!info` | Show user info |
-| `!бу` | Fun command (bot pretends to be scared lol) |
-| `@admin` | Call admin attention |
+https://github.com/wwydmanski/gender-extractor — Определение пола
 
-### Admin Commands
+https://huggingface.co/prithivMLmods/siglip2-x256-explicit-content — NSFW модель
 
-| Command | Description |
-|---------|-------------|
-| `!ban` | Ban user (reply) |
-| `!unban` | Unban user (reply) |
-| `!ping` | Check bot status |
-| `!prof <text>` | Check text for profanity |
-
-### Owner Commands
-
-| Command | Description |
-|---------|-------------|
-| `!spam` | Mark message as spam (reply) |
-| `!reward <points>` | Add reputation points |
-| `!punish <points>` | Remove reputation points |
-| `!setlvl <level>` | Set user level |
-| `!rreset` | Reset user reputation |
-| `!msg <text>` | Send message from bot |
-| `!chatid` | Get current chat ID |
-| `!reload` | Reload announcements from localization files |
-| `!log <text>` | Write test log |
-
-## External Libraries
-
-The bot uses two external libraries in the `libs/` folder:
-
-- **censure**: Russian/English profanity detection
-- **gender_extractor**: Gender detection from names
-
-## Credits
-https://github.com/masteroncluster/py-censure - Profanity filter we used as a base  
-https://github.com/MasterGroosha/telegram-report-bot - Reports system we used as a base  
-https://huggingface.co/RUSpam/spam_deberta_v4 - Anti-Spam AI model we used as a base  
-https://github.com/wwydmanski/gender-extractor - Gender detection we used as a base  
-https://huggingface.co/prithivMLmods/siglip2-x256-explicit-content - Our current NSFW detection model
-
-## Author of Samurai
-
+Авторы
+Оригинальный Samurai
 (C) 2026 Abraham Tugalov
+
+Форк Шишка-бот
+Luno-o — Система фото кошек, белый список ботов, улучшенные приветствия и многое другое!
+
+Лицензия
+MIT
+
+Поддержка
+По вопросам и предложениям: GitHub Issues
+
+🐱 Удачи в модерации! И пусть Шишка всегда будет с тобой!
