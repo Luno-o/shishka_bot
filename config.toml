@@ -1,0 +1,226 @@
+[bot]
+owner = 0
+token = ""
+version = "1.1"
+version_codename = "Gojo Satoru"
+
+# Список ID ботов, которых НЕ трогать (белый список)
+# Можно указать несколько через запятую
+bot_whitelist = [6875242793]
+# Пример: bot_whitelist = [123456789, 987654321]
+
+
+
+[locale]
+# default locale for bot messages
+default = "ru"
+
+# available locales (must have corresponding folder in locales/)
+available = ["ru", "en"]
+
+
+
+[groups]
+# list of main chat IDs where bot operates (can be multiple)
+main = []
+
+# single channel for admin reports
+reports = 0
+
+# single channel for logs
+logs = 0
+
+# list of linked channels (for auto-forward/comment detection)
+linked_channels = []
+
+# time in seconds for new users media restriction
+new_users_nomedia = 7776000
+
+
+
+[spam]
+# after what amount of messages, anti-spam AI will stop checking this user
+member_messages_threshold = 15
+
+# OR after what amount of reputation points, anti-spam will stop checking this user
+member_reputation_threshold = 15
+
+# reputation points user must have, to be allowed to send media type messages
+allow_media_threshold = 15
+
+# remove messages during this interval after a post to channel has been made (any other gender/unknown)
+# set to 0 to allow all
+remove_first_comments_interval = 30
+
+# reputation points account must have, to be allowed to post messages (automatic_forward)
+allow_comments_rep_threshold = 50
+
+# remove messages during this interval after a post to channel has been made (only applied to woman gender)
+# set to 0 to allow all
+women_remove_first_comments_interval = 600
+
+# reputation points women account must have, to be allowed to post messages
+# could be lower for those groups where women comments not so often
+# affects if profile photo will be checked for NSFW
+allow_comments_rep_threshold__woman = 10
+
+# reputation points below which single-emoji messages are deleted (bot spam pattern)
+single_emoji_rep_threshold = 15
+
+# reputation points required to post any links (URLs, t.me invites, etc.)
+links_rep_threshold = 20
+
+# reputation points required to use "Reply in Another Chat" (cross-chat replies)
+# bots and spammers abuse this to inject messages with external context
+external_reply_rep_threshold = 50
+
+# reputation points required to forward messages from other chats/users
+# low-rep users forwarding is a common spam pattern
+allow_forwards_threshold = 50
+
+# reputation penalty for attempting to forward with low rep
+forward_violation_penalty = 10
+
+# auto-ban users who exceed spam violations threshold
+autoban_enabled = true
+
+# how much violations required to autoban the member (it's only spam violations)
+autoban_threshold = 20
+
+# only auto ban if a member's rep is lower than this threshold
+autoban_rep_threshold = 50
+
+
+
+# accounts with rep > allow_comments_rep_threshold__woman will be skipped from nsfw checks
+# note that NSFW checks are performed only with FEMALE accounts with low rep
+[nsfw]
+enabled = true
+
+# > will be detected as nsfw
+# these values works through AND condition between sensual and pornography
+comb_sensual_prediction_threshold = 0.15
+comb_pornography_prediction_threshold = 0.15
+
+# > will be detected as nsfw
+sensual_prediction_threshold = 0.7
+
+# > will be detected as nsfw (standalone — requires high confidence since model has many FPs)
+pornography_prediction_threshold = 0.85
+
+# > will be detected as nsfw (only if accompanied by some pornography or sensual signal)
+hentai_prediction_threshold = 0.9
+
+# > will NOT be detected as nsfw
+# these values works as: normal and (comb_sensual and comb_pornography)
+normal_prediction_threshold = 0.3
+normal_comb_sensual_prediction_threshold = 0.5
+normal_comb_pornography_prediction_threshold = 0.2
+
+# > will NOT be detected as nsfw
+anime_prediction_threshold = 0.7
+
+# check all the profiles with rep lower that this
+check_rep_threshold = 50
+
+# delay between profile checks (if the user changes the profile picture, etc)
+profile_check_cooldown = 3600
+
+
+[db]
+url = "sqlite+aiosqlite:///db.sqlite"
+
+
+[cache]
+# Member data cache
+members_maxsize = 500
+members_ttl = 150  # seconds
+
+# Telegram member cache (admin status, etc.)
+tgmembers_maxsize = 1000
+tgmembers_ttl = 600  # seconds
+
+# Gender detection cache (LRU, no TTL - names don't change)
+gender_maxsize = 300
+
+# NSFW detection cache
+nsfw_maxsize = 100
+nsfw_ttl = 3600  # seconds (1 hour)
+
+# How often to flush pending DB updates
+batch_flush_interval = 60  # seconds
+
+# Skip expensive ML checks for users with this many messages
+trusted_user_messages = 100
+
+
+
+[throttling]
+# rate limiting for private chats
+enabled = true
+
+# minimum seconds between messages
+rate_limit = 0.5
+
+# max messages allowed in time window
+max_messages = 20
+
+# time window in seconds
+time_window = 60
+
+
+
+[healthcheck]
+# HTTP health check endpoint for container orchestration
+enabled = false
+host = "0.0.0.0"
+port = 8080
+
+
+
+[announcements]
+# Enable/disable scheduled announcements
+enabled = true
+
+# Track last N messages per group to check announcement frequency
+history_size = 20
+
+# Don't send new announcement if >= this many recent messages were announcements
+# (empty chat announcements stack protection)
+max_stack = 3
+
+# Don't re-send same announcement if it appeared in last N messages
+avoid_duplicate_in_last = 15
+
+# Global sleep time - don't send announcements during this period
+# Format: "HH:MM" (24-hour), leave empty to disable
+sleep_from = "22:00"
+sleep_to = "9:00"
+
+# UTC offset for sleep time calculation (e.g., 5 for UTC+5, -3 for UTC-3)
+# 0 for server default time
+utc_offset = 5
+
+# Per-group overrides (optional)
+# Group-specific settings take priority over global settings
+# We can use this i.e. to make announcements "sleep" in a different time zones
+# Could be useful if a bot is used in multi-chat mode with groups from all over the world
+# [announcements.groups.-1001234567890]
+# sleep_from = "23:00"
+# sleep_to = "08:00"
+# utc_offset = 5
+
+
+
+[ml]
+# Auto-unload ML models when not used to save RAM
+auto_unload_enabled = false
+
+# Unload spam model after this many minutes of inactivity
+spam_ttl_minutes = 60
+
+# Unload NSFW model after this many minutes of inactivity
+nsfw_ttl_minutes = 10
+
+# How often to check for models to unload (seconds)
+check_interval_seconds = 60

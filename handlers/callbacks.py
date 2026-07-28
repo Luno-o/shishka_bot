@@ -1,0 +1,721 @@
+"""
+Callback query handlers for inline buttons.
+
+Note: callback_data format for reports:
+- rdel_{chat_id}_{msg_id}_{reporter_id}_{bot_reply_id}
+- rdelban_{chat_id}_{msg_id}_{user_id}_{reporter_id}_{bot_reply_id}
+- etc.
+"""
+import logging
+from contextlib import suppress
+from datetime import datetime, timedelta, timezone
+from functools import wraps
+
+from aiogram import Router, F
+from aiogram.types import CallbackQuery, ChatPermissions
+from aiogram.exceptions import TelegramBadRequest
+
+from config import config
+from db.models import Member, Spam
+from services.reports import remove_report
+from services.cache import queue_member_update
+from utils import get_string, _random
+from handlers.personal_actions import pending_messages
+from handlers.cat_commands import send_random_cat
+
+router = Router(name="callbacks")
+logger = logging.getLogger(__name__)
+
+
+def safe_callback(func):
+    """Catch malformed callback data so bad payloads don't crash handlers."""
+    @wraps(func)
+    async def wrapper(call: CallbackQuery) -> None:
+        try:
+            return await func(call)
+        except (ValueError, IndexError) as e:
+            logger.warning(f"Malformed callback data in {func.__name__}: {call.data!r} ({e})")
+            await call.answer("❌ Ошибка данных", show_alert=True)
+    return wrapper
+
+
+### MSG SEND CALLBACKS (owner broadcast) ###
+
+@router.callback_query(F.data.startswith("msg_"))
+@safe_callback
+async def callback_msg_send(call: CallbackQuery) -> None:
+    """Handle message send callbacks."""
+    # verify owner
+    if call.from_user.id != config.bot.owner:
+        await call.answer("⛔ Только для владельца", show_alert=True)
+        return
+    
+    parts = call.data.split("_")
+    if len(parts) < 3:
+        await call.answer("❌ Ошибка данных", show_alert=True)
+        return
+    
+    msg_id = parts[1]
+    target = "_".join(parts[2:])  # Handle negative chat IDs like -100123
+    
+    # get stored message
+    if msg_id not in pending_messages:
+        await call.message.edit_text("❌ Сообщение устарело. Отправьте команду заново.")
+        await call.answer()
+        return
+    
+    text, _ = pending_messages[msg_id]
+    
+    if target == "cancel":
+        del pending_messages[msg_id]
+        await call.message.edit_text("❌ Отменено.")
+        await call.answer()
+        return
+    
+    if target == "all":
+        # send to all chats
+        sent = 0
+        failed = 0
+        for chat_id in config.groups.main:
+            try:
+                await call.bot.send_message(chat_id, text)
+                sent += 1
+            except Exception:
+                failed += 1
+        
+        del pending_messages[msg_id]
+        await call.message.edit_text(
+            f"✅ <b>Отправлено во все чаты</b>\n\n"
+            f"Успешно: {sent}\n"
+            f"Ошибок: {failed}"
+        )
+        await call.answer("Отправлено!")
+    else:
+        # send to specific chat
+        try:
+            chat_id = int(target)
+            await call.bot.send_message(chat_id, text)
+            
+            # get chat name for confirmation
+            try:
+                chat = await call.bot.get_chat(chat_id)
+                chat_name = chat.title or f"Chat {chat_id}"
+            except Exception:
+                chat_name = f"Chat {chat_id}"
+            
+            del pending_messages[msg_id]
+            await call.message.edit_text(f"✅ <b>Отправлено в:</b> {chat_name}")
+            await call.answer("Отправлено!")
+        except ValueError:
+            await call.answer("❌ Неверный ID чата", show_alert=True)
+        except Exception as e:
+            await call.answer(f"❌ Ошибка: {str(e)[:100]}", show_alert=True)
+
+
+### REPORT CALLBACKS (new format with rewards) ###
+
+async def _update_bot_reply(bot, chat_id: int, bot_reply_id: int) -> None:
+    """Update bot's reply message in the original chat with completion message."""
+    with suppress(TelegramBadRequest):
+        await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=bot_reply_id,
+            text=_random("report-completed"),
+            parse_mode="HTML"
+        )
+
+
+async def _reward_reporter(reporter_id: int, points: int) -> None:
+    """Reward reporter with reputation points."""
+    await queue_member_update(reporter_id, reputation_points=points)
+
+
+@router.callback_query(F.data.startswith("rdel_"))
+@safe_callback
+async def callback_report_delete(call: CallbackQuery) -> None:
+    """Delete reported message only. Reward rep."""
+    # format: rdel_chatId_msgId_reporterId_botReplyId
+    parts = call.data.split("_")
+    chat_id = int(parts[1])
+    message_id = int(parts[2])
+    reporter_id = int(parts[3])
+    bot_reply_id = int(parts[4])
+
+    with suppress(TelegramBadRequest):
+        await call.bot.delete_message(chat_id, message_id)
+
+    # remove from tracking
+    remove_report(chat_id, message_id)
+    
+    # reward reporter (+10 for delete)
+    await _reward_reporter(reporter_id, 10)
+    
+    # update bot's reply in original chat
+    await _update_bot_reply(call.bot, chat_id, bot_reply_id)
+
+    await call.message.edit_text(
+        call.message.text + "\n\n" + get_string("action_deleted")
+    )
+    await call.answer(text="Done")
+
+
+@router.callback_query(F.data.startswith("rdelban_"))
+@safe_callback
+async def callback_report_delete_and_ban(call: CallbackQuery) -> None:
+    """Delete message and ban user. Reward more rep."""
+    # format: rdelban_chatId_msgId_userId_reporterId_botReplyId
+    parts = call.data.split("_")
+    chat_id = int(parts[1])
+    message_id = int(parts[2])
+    user_id = int(parts[3])
+    reporter_id = int(parts[4])
+    bot_reply_id = int(parts[5])
+
+    with suppress(TelegramBadRequest):
+        await call.bot.delete_message(chat_id, message_id)
+
+    await call.bot.ban_chat_member(chat_id=chat_id, user_id=user_id)
+
+    # remove from tracking
+    remove_report(chat_id, message_id)
+    
+    # reward reporter (+20 for ban)
+    await _reward_reporter(reporter_id, 20)
+    
+    # update bot's reply in original chat
+    await _update_bot_reply(call.bot, chat_id, bot_reply_id)
+
+    await call.message.edit_text(
+        call.message.text + "\n\n" + get_string("action_deleted_banned")
+    )
+    await call.answer(text="Done")
+
+
+@router.callback_query(F.data.startswith("rmute_"))
+@safe_callback
+async def callback_report_delete_and_mute_24h(call: CallbackQuery) -> None:
+    """Delete message and mute user for 24 hours. Reward rep."""
+    # format: rmute_chatId_msgId_userId_reporterId_botReplyId
+    parts = call.data.split("_")
+    chat_id = int(parts[1])
+    message_id = int(parts[2])
+    user_id = int(parts[3])
+    reporter_id = int(parts[4])
+    bot_reply_id = int(parts[5])
+
+    with suppress(TelegramBadRequest):
+        await call.bot.delete_message(chat_id, message_id)
+
+    await call.bot.restrict_chat_member(
+        chat_id=chat_id,
+        user_id=user_id,
+        permissions=ChatPermissions(can_send_messages=False),
+        until_date=datetime.now(timezone.utc) + timedelta(hours=24)
+    )
+
+    # remove from tracking
+    remove_report(chat_id, message_id)
+    
+    # reward reporter (+10 for mute)
+    await _reward_reporter(reporter_id, 10)
+    
+    # update bot's reply in original chat
+    await _update_bot_reply(call.bot, chat_id, bot_reply_id)
+
+    await call.message.edit_text(
+        call.message.text + "\n\n" + get_string("action_deleted_readonly")
+    )
+    await call.answer(text="Done")
+
+
+@router.callback_query(F.data.startswith("rmute2_"))
+@safe_callback
+async def callback_report_delete_and_mute_7d(call: CallbackQuery) -> None:
+    """Delete message and mute user for 7 days. Reward some more rep."""
+    # format: rmute2_chatId_msgId_userId_reporterId_botReplyId
+    parts = call.data.split("_")
+    chat_id = int(parts[1])
+    message_id = int(parts[2])
+    user_id = int(parts[3])
+    reporter_id = int(parts[4])
+    bot_reply_id = int(parts[5])
+
+    with suppress(TelegramBadRequest):
+        await call.bot.delete_message(chat_id, message_id)
+
+    await call.bot.restrict_chat_member(
+        chat_id=chat_id,
+        user_id=user_id,
+        permissions=ChatPermissions(can_send_messages=False),
+        until_date=datetime.now(timezone.utc) + timedelta(days=7)
+    )
+
+    # remove from tracking
+    remove_report(chat_id, message_id)
+    
+    # reward reporter (+15 for 7d mute)
+    await _reward_reporter(reporter_id, 15)
+    
+    # update bot's reply in original chat
+    await _update_bot_reply(call.bot, chat_id, bot_reply_id)
+
+    await call.message.edit_text(
+        call.message.text + "\n\n" + get_string("action_deleted_readonly2")
+    )
+    await call.answer(text="Done")
+
+
+@router.callback_query(F.data.startswith("rdismiss_"))
+@safe_callback
+async def callback_report_dismiss(call: CallbackQuery) -> None:
+    """Dismiss report (false alarm). No rep reward."""
+    # format: rdismiss_chatId_msgId_userId_reporterId_botReplyId
+    parts = call.data.split("_")
+    chat_id = int(parts[1])
+    message_id = int(parts[2])
+    # user_id = int(parts[3])  # reported user - not used here
+    # reporter_id = int(parts[4])
+    bot_reply_id = int(parts[5])
+
+    # remove from tracking
+    remove_report(chat_id, message_id)
+    
+    # delete bot's reply in original chat (false alarm, no need to show completion)
+    with suppress(TelegramBadRequest):
+        await call.bot.delete_message(chat_id, bot_reply_id)
+
+    await call.message.edit_text(
+        call.message.text + "\n\n" + get_string("action_dismissed")
+    )
+    await call.answer(text="Done")
+
+
+@router.callback_query(F.data.startswith("rdismiss2_"))
+@safe_callback
+async def callback_report_dismiss_mute_reporter_1d(call: CallbackQuery) -> None:
+    """Dismiss and mute reporter for 1 day."""
+    # format: rdismiss2_chatId_msgId_userId_reporterId_botReplyId
+    parts = call.data.split("_")
+    chat_id = int(parts[1])
+    message_id = int(parts[2])
+    # user_id = int(parts[3])  # reported user
+    reporter_id = int(parts[4])
+    bot_reply_id = int(parts[5])
+
+    # remove from tracking
+    remove_report(chat_id, message_id)
+
+    # mute reporter
+    await call.bot.restrict_chat_member(
+        chat_id=chat_id,
+        user_id=reporter_id,
+        permissions=ChatPermissions(can_send_messages=False),
+        until_date=datetime.now(timezone.utc) + timedelta(days=1)
+    )
+    
+    # punish reporter
+    await queue_member_update(reporter_id, reputation_points=-10)
+    
+    # delete bot's reply
+    with suppress(TelegramBadRequest):
+        await call.bot.delete_message(chat_id, bot_reply_id)
+
+    await call.message.edit_text(
+        call.message.text + "\n\n" + get_string("action_deleted_dismissed2")
+    )
+    await call.answer(text="Done")
+
+
+@router.callback_query(F.data.startswith("rdismiss3_"))
+@safe_callback
+async def callback_report_dismiss_mute_reporter_7d(call: CallbackQuery) -> None:
+    """Dismiss and mute reporter for 7 days."""
+    # format: rdismiss3_chatId_msgId_userId_reporterId_botReplyId
+    parts = call.data.split("_")
+    chat_id = int(parts[1])
+    message_id = int(parts[2])
+    # user_id = int(parts[3])
+    reporter_id = int(parts[4])
+    bot_reply_id = int(parts[5])
+
+    # remove from tracking
+    remove_report(chat_id, message_id)
+
+    # mute reporter
+    await call.bot.restrict_chat_member(
+        chat_id=chat_id,
+        user_id=reporter_id,
+        permissions=ChatPermissions(can_send_messages=False),
+        until_date=datetime.now(timezone.utc) + timedelta(days=7)
+    )
+    
+    # punish reporter
+    await queue_member_update(reporter_id, reputation_points=-20)
+    
+    # delete bot's reply
+    with suppress(TelegramBadRequest):
+        await call.bot.delete_message(chat_id, bot_reply_id)
+
+    await call.message.edit_text(
+        call.message.text + "\n\n" + get_string("action_deleted_dismissed3")
+    )
+    await call.answer(text="Done")
+
+
+@router.callback_query(F.data.startswith("rdismiss4_"))
+@safe_callback
+async def callback_report_dismiss_ban_reporter(call: CallbackQuery) -> None:
+    """Dismiss and ban reporter."""
+    # format: rdismiss4_chatId_msgId_userId_reporterId_botReplyId
+    parts = call.data.split("_")
+    chat_id = int(parts[1])
+    message_id = int(parts[2])
+    # user_id = int(parts[3])
+    reporter_id = int(parts[4])
+    bot_reply_id = int(parts[5])
+
+    # remove from tracking
+    remove_report(chat_id, message_id)
+
+    # ban reporter
+    await call.bot.ban_chat_member(chat_id=chat_id, user_id=reporter_id)
+    
+    # delete bot's reply
+    with suppress(TelegramBadRequest):
+        await call.bot.delete_message(chat_id, bot_reply_id)
+
+    await call.message.edit_text(
+        call.message.text + "\n\n" + get_string("action_deleted_dismissed4")
+    )
+    await call.answer(text="Done")
+
+
+### LEGACY REPORT CALLBACKS (backwards compat) ###
+
+@router.callback_query(F.data.startswith("del_"))
+@safe_callback
+async def callback_delete(call: CallbackQuery) -> None:
+    """Delete reported message only (legacy)."""
+    parts = call.data.split("_")
+    chat_id = int(parts[1])
+    message_id = int(parts[2])
+
+    with suppress(TelegramBadRequest):
+        await call.bot.delete_message(chat_id, message_id)
+
+    await call.message.edit_text(
+        call.message.text + get_string("action_deleted")
+    )
+    await call.answer(text="Done")
+
+
+@router.callback_query(F.data.startswith("delban_"))
+@safe_callback
+async def callback_delete_and_ban(call: CallbackQuery) -> None:
+    """Delete message and ban user (legacy)."""
+    parts = call.data.split("_")
+    chat_id = int(parts[1])
+    message_id = int(parts[2])
+    user_id = int(parts[3])
+
+    with suppress(TelegramBadRequest):
+        await call.bot.delete_message(chat_id, message_id)
+
+    await call.bot.ban_chat_member(chat_id=chat_id, user_id=user_id)
+
+    await call.message.edit_text(
+        call.message.text + get_string("action_deleted_banned")
+    )
+    await call.answer(text="Done")
+
+
+@router.callback_query(F.data.startswith("mute_"))
+@safe_callback
+async def callback_delete_and_mute_24h(call: CallbackQuery) -> None:
+    """Delete message and mute user for 24 hours (legacy)."""
+    parts = call.data.split("_")
+    chat_id = int(parts[1])
+    message_id = int(parts[2])
+    user_id = int(parts[3])
+
+    with suppress(TelegramBadRequest):
+        await call.bot.delete_message(chat_id, message_id)
+
+    await call.bot.restrict_chat_member(
+        chat_id=chat_id,
+        user_id=user_id,
+        permissions=ChatPermissions(can_send_messages=False),
+        until_date=datetime.now(timezone.utc) + timedelta(hours=24)
+    )
+
+    await call.message.edit_text(
+        call.message.text + get_string("action_deleted_readonly")
+    )
+    await call.answer(text="Done")
+
+
+@router.callback_query(F.data.startswith("mute2_"))
+@safe_callback
+async def callback_delete_and_mute_7d(call: CallbackQuery) -> None:
+    """Delete message and mute user for 7 days (legacy)."""
+    parts = call.data.split("_")
+    chat_id = int(parts[1])
+    message_id = int(parts[2])
+    user_id = int(parts[3])
+
+    with suppress(TelegramBadRequest):
+        await call.bot.delete_message(chat_id, message_id)
+
+    await call.bot.restrict_chat_member(
+        chat_id=chat_id,
+        user_id=user_id,
+        permissions=ChatPermissions(can_send_messages=False),
+        until_date=datetime.now(timezone.utc) + timedelta(days=7)
+    )
+
+    await call.message.edit_text(
+        call.message.text + get_string("action_deleted_readonly2")
+    )
+    await call.answer(text="Done")
+
+
+@router.callback_query(F.data.startswith("dismiss_"))
+@safe_callback
+async def callback_dismiss(call: CallbackQuery) -> None:
+    """Dismiss report (false alarm) (legacy)."""
+    await call.message.edit_text(
+        call.message.text + get_string("action_dismissed")
+    )
+    await call.answer(text="Done")
+
+
+@router.callback_query(F.data.startswith("dismiss2_"))
+@safe_callback
+async def callback_dismiss_mute_reporter_1d(call: CallbackQuery) -> None:
+    """Dismiss and mute reporter for 1 day (legacy)."""
+    parts = call.data.split("_")
+    chat_id = int(parts[1])
+    message_id = int(parts[2])
+    user_id = int(parts[3])
+
+    with suppress(TelegramBadRequest):
+        await call.bot.delete_message(chat_id, message_id)
+
+    await call.bot.restrict_chat_member(
+        chat_id=chat_id,
+        user_id=user_id,
+        permissions=ChatPermissions(can_send_messages=False),
+        until_date=datetime.now(timezone.utc) + timedelta(days=1)
+    )
+
+    await call.message.edit_text(
+        call.message.text + get_string("action_deleted_dismissed2")
+    )
+    await call.answer(text="Done")
+
+
+@router.callback_query(F.data.startswith("dismiss3_"))
+@safe_callback
+async def callback_dismiss_mute_reporter_7d(call: CallbackQuery) -> None:
+    """Dismiss and mute reporter for 7 days (legacy)."""
+    parts = call.data.split("_")
+    chat_id = int(parts[1])
+    message_id = int(parts[2])
+    user_id = int(parts[3])
+
+    with suppress(TelegramBadRequest):
+        await call.bot.delete_message(chat_id, message_id)
+
+    await call.bot.restrict_chat_member(
+        chat_id=chat_id,
+        user_id=user_id,
+        permissions=ChatPermissions(can_send_messages=False),
+        until_date=datetime.now(timezone.utc) + timedelta(days=7)
+    )
+
+    await call.message.edit_text(
+        call.message.text + get_string("action_deleted_dismissed3")
+    )
+    await call.answer(text="Done")
+
+
+@router.callback_query(F.data.startswith("dismiss4_"))
+@safe_callback
+async def callback_dismiss_ban_reporter(call: CallbackQuery) -> None:
+    """Dismiss and ban reporter (legacy)."""
+    parts = call.data.split("_")
+    chat_id = int(parts[1])
+    message_id = int(parts[2])
+    user_id = int(parts[3])
+
+    with suppress(TelegramBadRequest):
+        await call.bot.delete_message(chat_id, message_id)
+
+    await call.bot.ban_chat_member(chat_id=chat_id, user_id=user_id)
+
+    await call.message.edit_text(
+        call.message.text + get_string("action_deleted_dismissed4")
+    )
+    await call.answer(text="Done")
+
+
+### SPAM CALLBACKS ###
+
+@router.callback_query(F.data.startswith("spam_test_"))
+@safe_callback
+async def callback_spam_test(call: CallbackQuery) -> None:
+    """Remove spam record (it was a test)."""
+    parts = call.data.split("_")
+    spam_id = int(parts[2])
+    member_id = int(parts[3])
+
+    # delete spam record
+    try:
+        await Spam.objects.delete(id=spam_id)
+    except Exception:
+        pass
+
+    # increase member messages count
+    try:
+        member = await Member.objects.get(id=member_id)
+        member.messages_count += 1
+        await member.update()
+    except Exception:
+        pass
+
+    await call.message.edit_text(
+        call.message.text + "\n\n<b>Удалено из базы, вероятно тест.</b>"
+    )
+    await call.answer(text="Done")
+
+
+@router.callback_query(F.data.startswith("spam_ban_"))
+@safe_callback
+async def callback_spam_ban(call: CallbackQuery) -> None:
+    """Ban user for spam."""
+    parts = call.data.split("_")
+    spam_id = int(parts[2])
+    user_id = int(parts[3])
+    # chat_id is stored in spam record
+    
+    # get spam record to find the chat_id
+    try:
+        spam_rec = await Spam.objects.get(id=spam_id)
+        chat_id = spam_rec.chat_id
+        
+        with suppress(TelegramBadRequest):
+            await call.bot.ban_chat_member(chat_id=chat_id, user_id=user_id)
+            
+        spam_rec.is_blocked = True
+        await spam_rec.update()
+    except Exception:
+        pass
+
+    await call.message.edit_text(
+        call.message.text + "\n\n❌ <b>Юзер забанен, сообщение помечено как спам</b>"
+    )
+    await call.answer(text="Done")
+
+
+@router.callback_query(F.data.startswith("spam_invert_"))
+@safe_callback
+async def callback_spam_not_spam(call: CallbackQuery) -> None:
+    """Mark message as not spam."""
+    parts = call.data.split("_")
+    spam_id = int(parts[2])
+    member_id = int(parts[3]) if len(parts) > 3 else None
+
+    # update spam record
+    try:
+        spam_rec = await Spam.objects.get(id=spam_id)
+        spam_rec.is_spam = False
+        await spam_rec.update()
+    except Exception:
+        pass
+
+    # increase member reputation
+    if member_id:
+        try:
+            member = await Member.objects.get(id=member_id)
+            member.messages_count += 1
+            member.reputation_points += 10
+            await member.update()
+        except Exception:
+            pass
+
+    await call.message.edit_text(
+        call.message.text + "\n\n❎ <b>Сообщение помечено как НЕ СПАМ</b>"
+    )
+    await call.answer(text="Done")
+
+
+### NSFW CALLBACKS ###
+
+@router.callback_query(F.data.startswith("nsfw_ban_"))
+@safe_callback
+async def callback_nsfw_ban(call: CallbackQuery) -> None:
+    """Ban user for NSFW profile picture."""
+    parts = call.data.split("_")
+    user_id = int(parts[2])
+    # chat_id is included in callback data
+    chat_id = int(parts[3]) if len(parts) > 3 else None
+    
+    if chat_id:
+        with suppress(TelegramBadRequest):
+            await call.bot.ban_chat_member(chat_id=chat_id, user_id=user_id)
+
+    await call.message.edit_text(
+        call.message.text + "\n\n❌ <b>Юзер забанен за NSFW изображение профиля.</b>"
+    )
+    await call.answer(text="Done")
+
+
+@router.callback_query(F.data.startswith("nsfw_safe_"))
+@safe_callback
+async def callback_nsfw_safe(call: CallbackQuery) -> None:
+    """Mark as not NSFW."""
+    member_id = int(call.data.split("_")[2])
+
+    try:
+        member = await Member.objects.get(id=member_id)
+        member.messages_count += 1
+        member.reputation_points += 10
+        await member.update()
+    except Exception:
+        pass
+
+    await call.message.edit_text(
+        call.message.text + "\n\n❎ <b>Сообщение помечено как не содержащее NSFW.</b>"
+    )
+    await call.answer(text="Done")
+
+@router.callback_query(F.data == "show_rules")
+async def show_rules_callback(callback: CallbackQuery) -> None:
+    """Send short rules when button is clicked."""
+    await callback.answer()
+    await callback.message.answer(get_string("rules-short"))
+
+@router.callback_query(F.data == "show_help")
+async def show_help_callback(callback: CallbackQuery) -> None:
+    await callback.answer()
+    await callback.message.answer(
+        "📋 <b>Доступные команды:</b>\n"
+        "/rules — правила чата\n"
+        "/me — моя статистика\n"
+        "/report — пожаловаться на сообщение\n"
+        "/бу — развлечение\n"
+        "/help — эта справка"
+    )
+    
+
+@router.callback_query(F.data == "show_rules")
+async def show_rules(callback: CallbackQuery) -> None:
+    """Send short rules when button is clicked."""
+    await callback.answer()
+    await callback.message.answer(get_string("rules-short"))
+
+@router.callback_query(F.data == "show_cat")
+async def show_cat_callback(callback: CallbackQuery) -> None:
+    """Show a random cat photo when button is clicked."""
+    await callback.answer("🐱 Ищу Шишку...")
+    await send_random_cat(callback.message)
