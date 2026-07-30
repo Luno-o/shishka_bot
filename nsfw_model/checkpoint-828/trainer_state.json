@@ -1,0 +1,51 @@
+{
+  "best_global_step": 828,
+  "best_metric": 0.577109158039093,
+  "best_model_checkpoint": "siglip2-finetune-full/checkpoint-828",
+  "epoch": 1.0,
+  "eval_steps": 500,
+  "global_step": 828,
+  "is_hyper_param_search": false,
+  "is_local_process_zero": true,
+  "is_world_process_zero": true,
+  "log_history": [
+    {
+      "epoch": 0.6038647342995169,
+      "grad_norm": 5.860389709472656,
+      "learning_rate": 0.00016302382908792113,
+      "loss": 0.823,
+      "step": 500
+    },
+    {
+      "epoch": 1.0,
+      "eval_accuracy": 0.7698523581165276,
+      "eval_loss": 0.577109158039093,
+      "eval_model_preparation_time": 0.0023,
+      "eval_runtime": 605.3087,
+      "eval_samples_per_second": 43.751,
+      "eval_steps_per_second": 5.47,
+      "step": 828
+    }
+  ],
+  "logging_steps": 500,
+  "max_steps": 2484,
+  "num_input_tokens_seen": 0,
+  "num_train_epochs": 3,
+  "save_steps": 500,
+  "stateful_callbacks": {
+    "TrainerControl": {
+      "args": {
+        "should_epoch_stop": false,
+        "should_evaluate": false,
+        "should_log": false,
+        "should_save": true,
+        "should_training_stop": false
+      },
+      "attributes": {}
+    }
+  },
+  "total_flos": 2.8971780911565373e+18,
+  "train_batch_size": 32,
+  "trial_name": null,
+  "trial_params": null
+}

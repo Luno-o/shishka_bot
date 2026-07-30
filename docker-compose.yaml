@@ -1,0 +1,43 @@
+services:
+  bot:
+    build: .
+    container_name: shishka-bot
+    restart: unless-stopped
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - BOT_OWNER=${BOT_OWNER}
+      - PROXY_ENABLED=${PROXY_ENABLED:-true}
+      - PROXY_URL=${PROXY_URL}
+      - DB_URL=sqlite+aiosqlite:///data/db.sqlite
+      - BOT_WHITELIST=${BOT_WHILIST:-}
+      - GROUPS_MAIN=${GROUPS_MAIN}
+      - GROUPS_REPORTS=${GROUPS_REPORTS}
+      - GROUPS_LOGS=${GROUPS_LOGS}
+      - LINKED_CHANNELS=${LINKED_CHANNELS:-}
+      - HEALTHCHECK_ENABLED=${HEALTHCHECK_ENABLED:-true}
+      - HEALTHCHECK_PORT=${HEALTHCHECK_PORT:-8080}
+      - TZ=Europe/Moscow
+      - PYTHONUNBUFFERED=1  # Чтобы логи сразу выводились
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+      - ./config.toml:/app/config.toml:ro
+      - ./locales:/app/locales:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G

@@ -34,8 +34,8 @@ logs = 0
 linked_channels = []
 
 # time in seconds for new users media restriction
-new_users_nomedia = 7776000
-
+new_users_nomedia = 0
+#7776000
 
 
 [spam]
@@ -95,7 +95,7 @@ autoban_rep_threshold = 50
 # accounts with rep > allow_comments_rep_threshold__woman will be skipped from nsfw checks
 # note that NSFW checks are performed only with FEMALE accounts with low rep
 [nsfw]
-enabled = true
+enabled = false
 
 # > will be detected as nsfw
 # these values works through AND condition between sensual and pornography
