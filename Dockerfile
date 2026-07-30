@@ -18,7 +18,7 @@ COPY . .
 
 # --- ИНИЦИАЛИЗАЦИЯ ---
 # Копируем безопасный скрипт и entrypoint
-COPY init_db_safe.py .
+COPY db_init_safe.py .
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 # ----------------------
