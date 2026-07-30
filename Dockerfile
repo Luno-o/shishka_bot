@@ -16,16 +16,18 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# --- ИНИЦИАЛИЗАЦИЯ ---
-# Копируем безопасный скрипт и entrypoint
+# Копируем скрипты
 COPY db_init_safe.py .
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
-# ----------------------
 
-# Create non-root user
-RUN useradd -m -u 1000 botuser && chown -R botuser:botuser /app
+# Создаем пользователя и настраиваем права
+RUN useradd -m -u 1000 botuser && \
+    chown -R botuser:botuser /app && \
+    mkdir -p /app/data && \
+    chown -R botuser:botuser /app/data
+
+# Переключаемся на пользователя
 USER botuser
 
-# Используем entrypoint
 ENTRYPOINT ["/entrypoint.sh"]
