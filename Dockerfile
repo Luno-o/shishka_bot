@@ -16,16 +16,19 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Копируем скрипты
+# Копируем скрипты и делаем entrypoint исполняемым
 COPY db_init_safe.py .
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Создаем пользователя и настраиваем права
+# Создаем пользователя и все необходимые директории с правильными правами
 RUN useradd -m -u 1000 botuser && \
-    chown -R botuser:botuser /app && \
     mkdir -p /app/data && \
-    chown -R botuser:botuser /app/data
+    touch /app/data/db.sqlite && \
+    chown -R botuser:botuser /app && \
+    chmod 755 /app && \
+    chmod 755 /app/data && \
+    chmod 644 /app/data/db.sqlite
 
 # Переключаемся на пользователя
 USER botuser
