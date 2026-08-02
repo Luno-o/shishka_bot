@@ -104,12 +104,17 @@ async def add_cat_media(message: Message) -> None:
             await message.answer("❌ Пожалуйста, ответьте на **фото** или **гифку** (анимацию)")
             return
         
-        # Проверяем, есть ли уже такое медиа
-        existing = await CatPhoto.objects.filter(file_unique_id=file_unique_id).first()
-        if existing:
-            logger.info("Медиа уже есть в базе")
-            await message.answer(f"🐱 Это {media_type} уже есть в базе! (ID: {existing.id})")
-            return
+                # Проверяем, есть ли уже такое медиа
+        from ormar.exceptions import NoMatch
+        try:
+            existing = await CatPhoto.objects.filter(file_unique_id=file_unique_id).first()
+            if existing:
+                logger.info("Медиа уже есть в базе")
+                await message.answer(f"🐱 Это {media_type} уже есть в базе! (ID: {existing.id})")
+                return
+        except NoMatch:
+            # Запись не найдена - это нормально, продолжаем
+            pass
         
         # Получаем описание
         description = None
