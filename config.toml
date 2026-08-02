@@ -1,6 +1,6 @@
 [bot]
-owner = 416633078
-token = 8936100913:AAEgMhhCySKHKViVTtzWhq73jF7vHBTKCoU
+owner_id = 416633078
+token = "8936100913:AAEgMhhCySKHKViVTtzWhq73jF7vHBTKCoU"
 version = "1.0.1"
 version_codename = "Shishka-bot"
 
