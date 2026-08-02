@@ -857,4 +857,143 @@ async def _report_nsfw(
 
 def _format_nsfw_scores(prediction: dict) -> str:
     """Format NSFW prediction scores for log messages."""
-   
+    labels = {
+        "Normal": "N", "Pornography": "P", "Enticing or Sensual": "S",
+        "Hentai": "H", "Anime Picture": "A"
+    }
+    return " | ".join(f"{labels.get(k, k)}: {v}" for k, v in prediction.items())
+
+
+def _contains_link(message: Message) -> bool:
+    """Return True if message contains any URL or clickable link.
+
+    Uses Telegram's own entity parsing - covers plain URLs (http/https/t.me)
+    and inline hyperlinks (text_link entities).
+    """
+    entities = message.entities or message.caption_entities or []
+    return any(e.type in ("url", "text_link") for e in entities)
+
+
+def _is_single_emoji(text: str) -> bool:
+    """Return True if text contains exactly one emoji and nothing else.
+
+    Handles simple emoji, emoji + variation selector / skin-tone modifier,
+    and two-regional-indicator flag sequences (e.g. 🇺🇸).
+    ZWJ sequences (👨‍👩‍👧) are intentionally treated as multi-emoji so they
+    are NOT flagged - only trivial single-character bot spam is caught.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return False
+    # Even the most exotic single emoji is < 10 UTF-16 code units
+    if len(stripped) > 10:
+        return False
+
+    _SKIP = {0xFE0F, 0x200D, 0x20E3}  # variation selector, ZWJ, combining keycap
+
+    base_count = 0
+    all_regional = True
+
+    for char in stripped:
+        cp = ord(char)
+
+        # Non-base combiners: skip without counting
+        if cp in _SKIP or 0x1F3FB <= cp <= 0x1F3FF:
+            continue
+
+        is_emoji = (
+            0x1F600 <= cp <= 0x1F64F or  # emoticons
+            0x1F300 <= cp <= 0x1F5FF or  # misc symbols & pictographs
+            0x1F680 <= cp <= 0x1F6FF or  # transport & map
+            0x1F700 <= cp <= 0x1FA6F or  # alchemical → chess symbols
+            0x1FA70 <= cp <= 0x1FAFF or  # symbols & pictographs extended-A
+            0x2600  <= cp <= 0x27BF  or  # misc symbols + dingbats
+            0x1F1E0 <= cp <= 0x1F1FF or  # regional indicators (flags)
+            0x2300  <= cp <= 0x23FF  or  # misc technical (⌚ etc.)
+            0x2B00  <= cp <= 0x2BFF  or  # misc symbols and arrows
+            cp in (0x00A9, 0x00AE, 0x2122)  # ©®™
+        )
+        if not is_emoji:
+            return False  # contains real text
+
+        if not (0x1F1E0 <= cp <= 0x1F1FF):
+            all_regional = False
+        base_count += 1
+
+    if base_count == 1:
+        return True  # ordinary single emoji
+    if base_count == 2 and all_regional:
+        return True  # flag (two regional indicator chars)
+    return False
+
+
+def _contains_invisible_spacing(text: str) -> bool:
+    """Check if text contains invisible Unicode spacing chars used in spam.
+
+    Spammers insert Hangul filler characters (U+115F, U+1160, U+3164, U+FFA0)
+    between words to evade keyword filters while appearing as normal spaces.
+    These have no legitimate use in Russian or English text.
+    """
+    _INVISIBLE_SPACING = {0x115F, 0x1160, 0x3164, 0xFFA0}
+    return any(ord(ch) in _INVISIBLE_SPACING for ch in text)
+
+
+def _contains_chinese(text: str) -> bool:
+    """Check if text contains Chinese characters (CJK Unified Ideographs)."""
+    for ch in text:
+        cp = ord(ch)
+        if (0x4E00 <= cp <= 0x9FFF or      # CJK Unified
+            0x3400 <= cp <= 0x4DBF or      # CJK Extension A
+            0x20000 <= cp <= 0x2A6DF or    # CJK Extension B
+            0xF900 <= cp <= 0xFAFF):       # CJK Compatibility
+            return True
+    return False
+
+
+def is_nsfw_detected(prediction: dict) -> bool:
+    """Check if NSFW is detected based on thresholds.
+
+    Detection requires *companion signals* - a single elevated category
+    alone is not enough (the model produces too many false positives on
+    clean anime art / attractive-but-safe photos).
+    """
+    normal = float(prediction["Normal"])
+    anime = float(prediction["Anime Picture"])
+    sensual = float(prediction["Enticing or Sensual"])
+    porn = float(prediction["Pornography"])
+    hentai = float(prediction["Hentai"])
+
+    # safe: high Normal or Anime with low explicit signals
+    # even if both sensual+porn are individually below limits, together they override
+    is_safe = (
+        (normal > config.nsfw.normal_prediction_threshold or
+         anime > config.nsfw.anime_prediction_threshold)
+        and
+        (sensual < config.nsfw.normal_comb_sensual_prediction_threshold
+         and porn < config.nsfw.normal_comb_pornography_prediction_threshold)
+        and not (sensual > 0.25 and porn > 0.03)
+    )
+
+    # combined sensual + pornography - most reliable signal
+    is_combined = (
+        sensual > config.nsfw.comb_sensual_prediction_threshold
+        and porn > config.nsfw.comb_pornography_prediction_threshold
+    )
+
+    # strong pornography alone
+    is_porn = porn > config.nsfw.pornography_prediction_threshold
+
+    # high sensual - needs some porn signal at moderate confidence,
+    # but very high sensual (>0.95) is conclusive on its own
+    is_sensual = (
+        sensual > config.nsfw.sensual_prediction_threshold
+        and (sensual > 0.95 or porn > 0.01)
+    )
+
+    # high hentai - only with explicit companion (avoids FP on clean anime art)
+    is_hentai = (
+        hentai > config.nsfw.hentai_prediction_threshold
+        and (porn > 0.05 or sensual > 0.1)
+    )
+
+    return not is_safe and (is_combined or is_porn or is_sensual or is_hentai)
