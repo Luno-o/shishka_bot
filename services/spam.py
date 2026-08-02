@@ -12,6 +12,8 @@ import gc
 
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
+import logging
+logger = logging.getLogger(__name__)
 
 MODEL_PATH = "./ruspam_model"
 
@@ -56,33 +58,22 @@ def _touch() -> None:
     _last_used = time.time()
 
 
-def predict(text: str) -> bool:
+import asyncio
+
+async def predict_async(text: str) -> bool:
     """
-    Predict if text is spam.
-
-    Args:
-        text: Text to check for spam
-
-    Returns:
-        True if spam, False otherwise
+    Асинхронная обёртка для predict.
+    Используется в асинхронном коде для вызова синхронной ML-функции.
     """
-    # quick check for known spam patterns (O(n) string search)
-    text_lower = text.lower()
-    if any(sub in text_lower for sub in _SPAM_SUBSTRINGS_LOWER):
-        return True
-
-    # ML prediction (lazy load models)
-    tokenizer = _get_tokenizer()
-    model = _get_model()
-    _touch()  # update last used time
-    
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=256)
-    with torch.no_grad():
-        outputs = model(**inputs)
-        logits = outputs.logits
-        predicted_class = torch.argmax(logits, dim=1).item()
-
-    return predicted_class == 1
+    logger.debug(f"🔍 Асинхронная проверка спама: {text[:50]}...")
+    try:
+        # Запускаем синхронную функцию в отдельном потоке
+        result = await asyncio.to_thread(predict, text)
+        logger.debug(f"🔍 Результат: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"❌ Ошибка в predict_async: {e}")
+        return False  # В случае ошибки считаем, что это не спам
 
 
 def preload_model() -> None:

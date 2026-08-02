@@ -24,6 +24,7 @@ services:
       - ./data:/app/data
       - ./config.toml:/app/config.toml:ro
       - ./locales:/app/locales:ro
+      - ./ruspam_model:/app/ruspam_model 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s

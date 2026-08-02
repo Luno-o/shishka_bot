@@ -29,7 +29,7 @@ from services import (
     retrieve_or_create_member, retrieve_tgmember, detect_gender,
     check_for_profanity_all, check_name_for_violations, Gender
 )
-from services.spam import predict as ruspam_predict
+from services.spam import predict_async as ruspam_predict
 from services.nsfw import classify_explicit_content as nsfw_predict
 from services.cache import (
     queue_member_update,
@@ -704,15 +704,24 @@ async def on_user_message(message: Message) -> None:
             member.reputation_points < config.spam.member_reputation_threshold
         )
 
-        if should_check_spam and await asyncio.to_thread(ruspam_predict, msg_text):
-            await message.delete()
-            await queue_member_update(
-                user_id,
-                violations_count_spam=1,
-                reputation_points=-5
-            )
-            await _maybe_autoban(message, member, 5, "спам")
-            return
+        # Старое:
+
+
+    if should_check_spam:
+        try:
+            is_spam = await ruspam_predict(msg_text)
+            logger.info(f"🔍 Результат проверки спама: {is_spam} (тип: {type(is_spam)})")
+            if is_spam:
+                await message.delete()
+                await queue_member_update(
+                    user_id,
+                    violations_count_spam=1,
+                    reputation_points=-5
+                )
+                await _maybe_autoban(message, member, 5, "спам")
+                return
+        except Exception as e:
+            logger.error(f"❌ Ошибка при проверке спама: {e}")
 
     handled = await check_for_unwanted(message, msg_text, member)
 

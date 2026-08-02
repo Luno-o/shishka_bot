@@ -16,8 +16,8 @@ env
 .idea
 *.log
 nsfw_model/
-ruspam_model/
+#ruspam_model/
 *.pkl
 *.h5
 *.onnx
-*.safetensors
+#*.safetensors
