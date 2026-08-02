@@ -13,7 +13,7 @@ import gc
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
-MODEL_PATH = "ruspam_model/torch/"
+MODEL_PATH = "./ruspam_model"
 
 # lazy-loaded model and tokenizer
 _tokenizer: Optional[AutoTokenizer] = None

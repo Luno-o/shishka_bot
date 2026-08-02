@@ -20,6 +20,7 @@ COPY . .
 COPY db_init_safe.py .
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+COPY ruspam_model/ /app/ruspam_model/
 
 # Создаем пользователя и все необходимые директории с правильными правами
 RUN useradd -m -u 1000 botuser && \
