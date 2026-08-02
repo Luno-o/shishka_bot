@@ -6,7 +6,7 @@ from aiogram.filters import Command, CommandObject
 
 from config import config
 from db.models import CatPhoto
-from filters import InMainGroups, IsAdminFilter
+from filters import InMainGroups
 from utils import get_string, user_mention, write_log
 
 logger = logging.getLogger(__name__)
@@ -66,15 +66,43 @@ async def send_random_cat(message: Message) -> None:
         logger.error(f"Error sending cat media: {e}")
         await message.answer("🐱 Что-то пошло не так... Попробуйте позже.")
 
+
+async def is_chat_admin(message: Message) -> bool:
+    """Проверяет, является ли пользователь администратором чата."""
+    try:
+        # Проверяем обычного пользователя
+        member = await message.bot.get_chat_member(message.chat.id, message.from_user.id)
+        if member.status in ['administrator', 'creator']:
+            return True
+        
+        # Проверяем анонимного админа (sender_chat)
+        if message.sender_chat:
+            try:
+                sender_member = await message.bot.get_chat_member(message.chat.id, message.sender_chat.id)
+                if sender_member.status in ['administrator', 'creator']:
+                    return True
+            except:
+                pass
+        
+        return False
+    except Exception as e:
+        logger.error(f"Ошибка проверки прав: {e}")
+        return False
+
+
 @router.message(
     InMainGroups(),
-    IsAdminFilter(),
     Command("add_shishka", prefix="!/")
 )
 async def add_cat_media(message: Message) -> None:
     """Add a cat photo or animation to the database (admin only)."""
+    # Проверяем права администратора
+    if not await is_chat_admin(message):
+        await message.answer("❌ Только администраторы могут добавлять фото!")
+        return
+    
     try:
-        logger.info("🔍 Начало добавления медиа")
+        logger.info(f"🔍 Начало добавления медиа от {message.from_user.id}")
         
         if not message.reply_to_message:
             logger.warning("Нет ответа на сообщение")
@@ -104,7 +132,7 @@ async def add_cat_media(message: Message) -> None:
             await message.answer("❌ Пожалуйста, ответьте на **фото** или **гифку** (анимацию)")
             return
         
-                # Проверяем, есть ли уже такое медиа
+        # Проверяем, есть ли уже такое медиа
         from ormar.exceptions import NoMatch
         try:
             existing = await CatPhoto.objects.filter(file_unique_id=file_unique_id).first()
@@ -113,7 +141,6 @@ async def add_cat_media(message: Message) -> None:
                 await message.answer(f"🐱 Это {media_type} уже есть в базе! (ID: {existing.id})")
                 return
         except NoMatch:
-            # Запись не найдена - это нормально, продолжаем
             pass
         
         # Получаем описание
@@ -143,13 +170,18 @@ async def add_cat_media(message: Message) -> None:
         logger.error(f"❌ Ошибка при добавлении медиа: {e}", exc_info=True)
         await message.answer(f"❌ Не удалось добавить медиа. Ошибка: {e}")
 
+
 @router.message(
     InMainGroups(),
-    IsAdminFilter(),
     Command("del_shishka", prefix="!/")
 )
 async def delete_cat_media(message: Message, command: CommandObject = None) -> None:
     """Delete a cat media from the database (admin only)."""
+    # Проверяем права администратора
+    if not await is_chat_admin(message):
+        await message.answer("❌ Только администраторы могут удалять фото!")
+        return
+    
     try:
         if not command or not command.args:
             await message.answer(
@@ -180,13 +212,18 @@ async def delete_cat_media(message: Message, command: CommandObject = None) -> N
         logger.error(f"Error deleting cat media: {e}")
         await message.answer("❌ Не удалось удалить медиа.")
 
+
 @router.message(
     InMainGroups(),
-    IsAdminFilter(),
     Command("list_shishka", prefix="!/")
 )
 async def list_cat_media(message: Message) -> None:
     """List all cat media in the database (admin only)."""
+    # Проверяем права администратора
+    if not await is_chat_admin(message):
+        await message.answer("❌ Только администраторы могут просматривать список!")
+        return
+    
     try:
         media_list = await CatPhoto.objects.all()
         
@@ -203,7 +240,7 @@ async def list_cat_media(message: Message) -> None:
         text += f"🎬 Гифки: {len(animations)}\n"
         text += f"📊 Всего: {len(media_list)}\n\n"
         
-        # Показываем последние 20
+        # Показываем последние 10
         text += "<b>Последние 10:</b>\n"
         for media in sorted(media_list, key=lambda x: x.id, reverse=True)[:10]:
             emoji = "🎬" if media.media_type == 'animation' else "📸"
