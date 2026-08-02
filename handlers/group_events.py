@@ -98,7 +98,7 @@ async def on_me(message: Message) -> None:
     tg_member = await retrieve_tgmember(message.bot, message.chat.id, user_id)
 
     full_name = tg_member.user.full_name.strip()
-    is_profanity, bad_word = await check_for_profanity_all(full_name)
+    is_profanity, bad_word = check_for_profanity_all(full_name)
     if is_profanity and bad_word:
         full_name = full_name.replace(bad_word, '#' * len(bad_word))
 
@@ -650,7 +650,7 @@ async def on_user_message(message: Message) -> None:
             await _maybe_autoban(message, member, 10, "невидимые символы")
             return
 
-        is_profanity, bad_word = await check_for_profanity_all(msg_text)
+        is_profanity, bad_word = check_for_profanity_all(msg_text)
 
         if is_profanity:
             await message.delete()
