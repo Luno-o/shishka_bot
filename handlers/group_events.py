@@ -71,7 +71,11 @@ async def on_bu(message: Message) -> None:
     """Fun command - bot gets 'scared'."""
     await message.reply(_random("bu-responses"))
 
-
+# ===== НОВЫЙ ХЕНДЛЕР ДЛЯ "БУ" БЕЗ СЛЕША =====
+@router.message(
+    InMainGroups(),
+    F.text.lower().in_({"бу", "boo", "bу"})  # bу - это "бу" с латинской y
+)
 @router.message(
     InMainGroups(),
     Command("rules", "правила", prefix="!/"),

@@ -44,7 +44,7 @@ async def send_random_cat(message: Message) -> None:
             return
         
         media = random.choice(media_list)
-        caption = f"🐱 Шишка! #{media.id}"
+        caption = f"🐱 Шишка!"
         if media.description:
             caption += f"\n📝 {media.description}"
         

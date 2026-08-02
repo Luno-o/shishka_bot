@@ -1,8 +1,8 @@
 [bot]
 owner = 0
 token = ""
-version = "1.1"
-version_codename = "Gojo Satoru"
+version = "1.0.1"
+version_codename = "Shishka-bot"
 
 # Список ID ботов, которых НЕ трогать (белый список)
 # Можно указать несколько через запятую
@@ -22,19 +22,19 @@ available = ["ru", "en"]
 
 [groups]
 # list of main chat IDs where bot operates (can be multiple)
-main = []
+main = [-1003933930273,-1002435031752]
 
 # single channel for admin reports
-reports = 0
+reports = -5142287184
 
 # single channel for logs
-logs = 0
+logs = -5142287184
 
 # list of linked channels (for auto-forward/comment detection)
-linked_channels = []
+linked_channels = [-1001708481256]
 
 # time in seconds for new users media restriction
-new_users_nomedia = 0
+new_users_nomedia = 900
 #7776000
 
 
@@ -180,7 +180,7 @@ port = 8080
 
 [announcements]
 # Enable/disable scheduled announcements
-enabled = true
+enabled = false
 
 # Track last N messages per group to check announcement frequency
 history_size = 20
