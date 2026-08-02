@@ -10,6 +10,7 @@ from utils.enums import MemberStatus
 class IsAdminFilter(BaseFilter):
     """
     Filter that checks if the user is a chat admin.
+    Supports anonymous admins (GroupAnonymousBot).
     """
 
     def __init__(self, is_admin: bool = True) -> None:
@@ -18,6 +19,19 @@ class IsAdminFilter(BaseFilter):
     async def __call__(self, event: Union[Message, CallbackQuery]) -> bool:
         if event.from_user is None:
             return False
+
+        # Если это анонимный админ (GroupAnonymousBot)
+        if event.from_user.id == 1087968824:  # ID GroupAnonymousBot
+            # Для анонимных админов проверяем sender_chat
+            if isinstance(event, Message) and event.sender_chat:
+                # Это сообщение от анонимного админа - пропускаем
+                return True if self.is_admin else False
+            # Если это просто бот, но не анонимный админ - не пропускаем
+            return False
+
+        # Владелец всегда админ
+        if event.from_user.id == config.owner:
+            return True if self.is_admin else False
 
         if isinstance(event, CallbackQuery):
             if event.message is None:
