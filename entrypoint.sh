@@ -7,7 +7,7 @@ echo "🚀 Запуск процесса инициализации Шишка-�
 mkdir -p /app/data 2>/dev/null || true
 
 echo "📥 Проверка ML-моделей..."
-python download_all_models.py || echo "⚠️ Ошибка при скачивании моделей, но продолжаем..."
+python download_model.py || echo "⚠️ Ошибка при скачивании моделей, но продолжаем..."
 
 echo "🗄️ Проверка и создание таблиц БД..."
 python db_init_safe.py
