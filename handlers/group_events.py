@@ -98,7 +98,7 @@ async def on_me(message: Message) -> None:
     tg_member = await retrieve_tgmember(message.bot, message.chat.id, user_id)
 
     full_name = tg_member.user.full_name.strip()
-    is_profanity, bad_word = check_for_profanity_all(full_name)
+    is_profanity, bad_word = await check_for_profanity_all(full_name)
     if is_profanity and bad_word:
         full_name = full_name.replace(bad_word, '#' * len(bad_word))
 
@@ -622,6 +622,9 @@ async def on_user_message(message: Message) -> None:
     msg_text = get_message_text(message)
     user_id = message.from_user.id
 
+    # ИНИЦИАЛИЗИРУЕМ ПЕРЕМЕННУЮ ЗДЕСЬ (до всех условий)
+    should_check_spam = False
+    
     if msg_text is not None:
         if _contains_chinese(msg_text):
             await message.delete()
@@ -650,7 +653,7 @@ async def on_user_message(message: Message) -> None:
             await _maybe_autoban(message, member, 10, "невидимые символы")
             return
 
-        is_profanity, bad_word = check_for_profanity_all(msg_text)
+        is_profanity, bad_word = await check_for_profanity_all(msg_text)
 
         if is_profanity:
             await message.delete()
@@ -699,15 +702,14 @@ async def on_user_message(message: Message) -> None:
             await _maybe_autoban(message, member, 10, "ссылка")
             return
 
+        # ВЫЧИСЛЯЕМ should_check_spam ТОЛЬКО ЕСЛИ ЕСТЬ ТЕКСТ
         should_check_spam = not is_trusted_user(member) and (
             member.messages_count < config.spam.member_messages_threshold or
             member.reputation_points < config.spam.member_reputation_threshold
         )
 
-        # Старое:
-
-
-    if should_check_spam:
+    # ТЕПЕРЬ should_check_spam ВСЕГДА ОПРЕДЕЛЕНА
+    if should_check_spam and msg_text is not None:
         try:
             is_spam = await ruspam_predict(msg_text)
             logger.info(f"🔍 Результат проверки спама: {is_spam} (тип: {type(is_spam)})")
@@ -731,6 +733,7 @@ async def on_user_message(message: Message) -> None:
             messages_count=1,
             reputation_points=1
         )
+    
 
 
 ### HELPER FUNCTIONS ###
