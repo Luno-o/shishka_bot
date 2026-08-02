@@ -206,7 +206,7 @@ async def check_profanity_ml(text: str) -> tuple[bool, str | None]:
         detector = get_spam_detector()
         
         # Проверяем через ML модель
-        result = await detector.predict(clean)
+        result = detector.predict(clean)
         
         # Проверяем, является ли спамом или содержит мат
         # Можно настроить порог
