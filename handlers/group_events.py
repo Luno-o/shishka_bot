@@ -622,9 +622,6 @@ async def on_user_message(message: Message) -> None:
     msg_text = get_message_text(message)
     user_id = message.from_user.id
 
-    # ИНИЦИАЛИЗИРУЕМ ПЕРЕМЕННУЮ ЗДЕСЬ (до всех условий)
-    should_check_spam = False
-    
     if msg_text is not None:
         if _contains_chinese(msg_text):
             await message.delete()
@@ -702,28 +699,26 @@ async def on_user_message(message: Message) -> None:
             await _maybe_autoban(message, member, 10, "ссылка")
             return
 
-        # ВЫЧИСЛЯЕМ should_check_spam ТОЛЬКО ЕСЛИ ЕСТЬ ТЕКСТ
         should_check_spam = not is_trusted_user(member) and (
             member.messages_count < config.spam.member_messages_threshold or
             member.reputation_points < config.spam.member_reputation_threshold
         )
 
-    # ТЕПЕРЬ should_check_spam ВСЕГДА ОПРЕДЕЛЕНА
-    if should_check_spam and msg_text is not None:
-        try:
-            is_spam = await ruspam_predict(msg_text)
-            logger.info(f"🔍 Результат проверки спама: {is_spam} (тип: {type(is_spam)})")
-            if is_spam:
-                await message.delete()
-                await queue_member_update(
-                    user_id,
-                    violations_count_spam=1,
-                    reputation_points=-5
-                )
-                await _maybe_autoban(message, member, 5, "спам")
-                return
-        except Exception as e:
-            logger.error(f"❌ Ошибка при проверке спама: {e}")
+        if should_check_spam:
+            try:
+                is_spam = await ruspam_predict(msg_text)
+                logger.info(f"🔍 Результат проверки спама: {is_spam} (тип: {type(is_spam)})")
+                if is_spam:
+                    await message.delete()
+                    await queue_member_update(
+                        user_id,
+                        violations_count_spam=1,
+                        reputation_points=-5
+                    )
+                    await _maybe_autoban(message, member, 5, "спам")
+                    return
+            except Exception as e:
+                logger.error(f"❌ Ошибка при проверке спама: {e}")
 
     handled = await check_for_unwanted(message, msg_text, member)
 
@@ -733,7 +728,6 @@ async def on_user_message(message: Message) -> None:
             messages_count=1,
             reputation_points=1
         )
-    
 
 
 ### HELPER FUNCTIONS ###
