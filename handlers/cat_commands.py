@@ -1,13 +1,13 @@
 import logging
 import random
 from aiogram import Router, F
-from aiogram.types import Message
+from aiogram.types import Message, ContentType
 from aiogram.filters import Command, CommandObject
 
 from config import config
 from db.models import CatPhoto
 from filters import InMainGroups, IsAdminFilter
-from utils import get_string
+from utils import get_string, user_mention, write_log
 
 logger = logging.getLogger(__name__)
 router = Router(name="cat_commands")
@@ -20,7 +20,7 @@ CAT_COMMANDS = {
     
     # Уменьшительно-ласкательные
     "шишуля", "шишулька", "шишечка", "шишонок", "шиш", "шишик",
-    "shishulya", "shishulka", "shishechka", "шишня", "пушишка", "пушня", "пух"
+    "shishulya", "shishulka", "shishechka", "шишня", "пушишка", "пушня", "пух",
     
     # Кошачьи
     "мяу", "meow", "мур", "purr", "мурка", "кис-кис", "кис кис",
@@ -35,23 +35,35 @@ CAT_COMMANDS = {
     F.text.lower().in_(CAT_COMMANDS),
 )
 async def send_random_cat(message: Message) -> None:
-    """Send a random cat photo from the database."""
+    """Send a random cat photo or animation from the database."""
     try:
-        photos = await CatPhoto.objects.all()
+        media_list = await CatPhoto.objects.all()
         
-        if not photos:
-            await message.answer("🐱 В базе пока нет фотографий Шишки! Добавьте первую командой /add_shishka")
+        if not media_list:
+            await message.answer("🐱 В базе пока нет фотографий или гифок Шишки! Добавьте первую командой /add_shishka")
             return
         
-        photo = random.choice(photos)
-        caption = f"🐱 Шишка! #{photo.id}"
-        if photo.description:
-            caption += f"\n📝 {photo.description}"
+        media = random.choice(media_list)
+        caption = f"🐱 Шишка! #{media.id}"
+        if media.description:
+            caption += f"\n📝 {media.description}"
         
-        await message.answer_photo(photo=photo.file_id, caption=caption)
+        # Отправляем в зависимости от типа
+        if media.media_type == 'animation':
+            await message.answer_animation(
+                animation=media.file_id,
+                caption=caption
+            )
+            logger.info(f"🎬 Отправлена гифка Шишки #{media.id}")
+        else:
+            await message.answer_photo(
+                photo=media.file_id,
+                caption=caption
+            )
+            logger.info(f"📸 Отправлено фото Шишки #{media.id}")
         
     except Exception as e:
-        logger.error(f"Error sending cat photo: {e}")
+        logger.error(f"Error sending cat media: {e}")
         await message.answer("🐱 Что-то пошло не так... Попробуйте позже.")
 
 @router.message(
@@ -59,35 +71,45 @@ async def send_random_cat(message: Message) -> None:
     IsAdminFilter(),
     Command("add_shishka", prefix="!/")
 )
-async def add_cat_photo(message: Message) -> None:
-    """Add a cat photo to the database (admin only)."""
+async def add_cat_media(message: Message) -> None:
+    """Add a cat photo or animation to the database (admin only)."""
     try:
-        logger.info("🔍 Начало добавления фото")
+        logger.info("🔍 Начало добавления медиа")
         
         if not message.reply_to_message:
             logger.warning("Нет ответа на сообщение")
-            await message.answer("🐱 Ответьте на фото командой /add_shishka")
-            return
-            
-        if not message.reply_to_message.photo:
-            logger.warning("Ответ не содержит фото")
-            await message.answer("🐱 Ответьте на ФОТО командой /add_shishka")
+            await message.answer("🐱 Ответьте на **фото** или **гифку** командой /add_shishka")
             return
         
-        photo = message.reply_to_message.photo[-1]
-        logger.info(f"📸 Получено фото: file_id={photo.file_id[:20]}...")
+        reply = message.reply_to_message
         
-        # Проверяем, есть ли уже такое фото
-        from ormar.exceptions import NoMatch
-        try:
-            existing = await CatPhoto.objects.filter(file_unique_id=photo.file_unique_id).first()
-            if existing:
-                logger.info("Фото уже есть в базе")
-                await message.answer("🐱 Это фото уже есть в базе!")
-                return
-        except NoMatch:
-            logger.info("Фото новое, сохраняем...")
-            pass
+        # Проверяем тип контента
+        media_type = None
+        file_id = None
+        file_unique_id = None
+        
+        if reply.photo:
+            media_type = 'photo'
+            photo = reply.photo[-1]
+            file_id = photo.file_id
+            file_unique_id = photo.file_unique_id
+            logger.info(f"📸 Получено фото: file_id={file_id[:20]}...")
+        elif reply.animation:
+            media_type = 'animation'
+            animation = reply.animation
+            file_id = animation.file_id
+            file_unique_id = animation.file_unique_id
+            logger.info(f"🎬 Получена гифка: file_id={file_id[:20]}...")
+        else:
+            await message.answer("❌ Пожалуйста, ответьте на **фото** или **гифку** (анимацию)")
+            return
+        
+        # Проверяем, есть ли уже такое медиа
+        existing = await CatPhoto.objects.filter(file_unique_id=file_unique_id).first()
+        if existing:
+            logger.info("Медиа уже есть в базе")
+            await message.answer(f"🐱 Это {media_type} уже есть в базе! (ID: {existing.id})")
+            return
         
         # Получаем описание
         description = None
@@ -97,80 +119,94 @@ async def add_cat_photo(message: Message) -> None:
             logger.info(f"📝 Описание: {description}")
         
         logger.info("💾 Сохранение в базу...")
-        new_photo = await CatPhoto.objects.create(
-            file_id=photo.file_id,
-            file_unique_id=photo.file_unique_id,
+        new_media = await CatPhoto.objects.create(
+            file_id=file_id,
+            file_unique_id=file_unique_id,
             added_by=message.from_user.id,
-            description=description
+            description=description,
+            media_type=media_type
         )
         
-        logger.info(f"✅ Фото сохранено! ID: {new_photo.id}")
+        media_emoji = "🎬" if media_type == 'animation' else "📸"
+        logger.info(f"✅ Медиа сохранено! ID: {new_media.id}")
         await message.answer(
-            f"✅ Фото Шишки добавлено в базу!\n"
-            f"🆔 ID: {new_photo.id}\n"
+            f"{media_emoji} Шишка #{new_media.id} добавлена в базу!\n"
             f"📝 Описание: {description or 'нет'}"
         )
         
     except Exception as e:
-        logger.error(f"❌ Ошибка при добавлении фото: {e}", exc_info=True)
-        await message.answer(f"❌ Не удалось добавить фото. Ошибка: {e}")
+        logger.error(f"❌ Ошибка при добавлении медиа: {e}", exc_info=True)
+        await message.answer(f"❌ Не удалось добавить медиа. Ошибка: {e}")
 
 @router.message(
     InMainGroups(),
     IsAdminFilter(),
     Command("del_shishka", prefix="!/")
 )
-async def delete_cat_photo(message: Message, command: CommandObject = None) -> None:
-    """Delete a cat photo from the database (admin only)."""
+async def delete_cat_media(message: Message, command: CommandObject = None) -> None:
+    """Delete a cat media from the database (admin only)."""
     try:
         if not command or not command.args:
             await message.answer(
-                "🐱 Укажите ID фото для удаления:\n"
+                "🐱 Укажите ID медиа для удаления:\n"
                 "`/del_shishka 5`\n"
                 "Чтобы узнать ID, используйте команду `/list_shishka`"
             )
             return
         
         try:
-            photo_id = int(command.args.split()[0])
+            media_id = int(command.args.split()[0])
         except ValueError:
             await message.answer("❌ ID должен быть числом!")
             return
         
-        photo = await CatPhoto.objects.filter(id=photo_id).first()
-        if not photo:
-            await message.answer(f"❌ Фото с ID {photo_id} не найдено.")
+        media = await CatPhoto.objects.filter(id=media_id).first()
+        if not media:
+            await message.answer(f"❌ Медиа с ID {media_id} не найдено.")
             return
         
-        await photo.delete()
-        await message.answer(f"✅ Фото #{photo_id} удалено из базы.")
+        media_type = media.media_type
+        await media.delete()
+        
+        media_emoji = "🎬" if media_type == 'animation' else "📸"
+        await message.answer(f"{media_emoji} Шишка #{media_id} удалена из базы.")
         
     except Exception as e:
-        logger.error(f"Error deleting cat photo: {e}")
-        await message.answer("❌ Не удалось удалить фото.")
+        logger.error(f"Error deleting cat media: {e}")
+        await message.answer("❌ Не удалось удалить медиа.")
 
 @router.message(
     InMainGroups(),
     IsAdminFilter(),
     Command("list_shishka", prefix="!/")
 )
-async def list_cat_photos(message: Message) -> None:
-    """List all cat photos in the database (admin only)."""
+async def list_cat_media(message: Message) -> None:
+    """List all cat media in the database (admin only)."""
     try:
-        photos = await CatPhoto.objects.all()
+        media_list = await CatPhoto.objects.all()
         
-        if not photos:
-            await message.answer("🐱 В базе нет фотографий Шишки.")
+        if not media_list:
+            await message.answer("🐱 В базе нет медиа Шишки.")
             return
         
-        text = "📸 <b>Фото Шишки в базе:</b>\n\n"
-        for photo in photos:
-            desc = photo.description or "без описания"
-            text += f"• #{photo.id} — {desc}\n"
+        # Группируем по типу
+        photos = [m for m in media_list if m.media_type == 'photo']
+        animations = [m for m in media_list if m.media_type == 'animation']
         
-        text += f"\n📊 Всего: {len(photos)} фото"
+        text = "📸 <b>Медиа Шишки в базе:</b>\n\n"
+        text += f"📸 Фото: {len(photos)}\n"
+        text += f"🎬 Гифки: {len(animations)}\n"
+        text += f"📊 Всего: {len(media_list)}\n\n"
+        
+        # Показываем последние 20
+        text += "<b>Последние 10:</b>\n"
+        for media in sorted(media_list, key=lambda x: x.id, reverse=True)[:10]:
+            emoji = "🎬" if media.media_type == 'animation' else "📸"
+            desc = media.description or "без описания"
+            text += f"• #{media.id} {emoji} — {desc}\n"
+        
         await message.answer(text)
         
     except Exception as e:
-        logger.error(f"Error listing cat photos: {e}")
-        await message.answer("❌ Не удалось получить список фото.")
+        logger.error(f"Error listing cat media: {e}")
+        await message.answer("❌ Не удалось получить список медиа.")

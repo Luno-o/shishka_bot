@@ -14,3 +14,4 @@ class CatPhoto(ormar.Model):
     added_by: int = ormar.BigInteger()
     added_at: datetime = ormar.DateTime(default=datetime.now)
     description: str = ormar.String(max_length=500, nullable=True)
+    media_type: str = ormar.String(max_length=20, default="photo")  # 'photo' или 'animation'
