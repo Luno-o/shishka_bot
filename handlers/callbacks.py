@@ -708,12 +708,6 @@ async def show_help_callback(callback: CallbackQuery) -> None:
     )
     
 
-@router.callback_query(F.data == "show_rules")
-async def show_rules(callback: CallbackQuery) -> None:
-    """Send short rules when button is clicked."""
-    await callback.answer()
-    await callback.message.answer(get_string("rules-short"))
-
 @router.callback_query(F.data == "show_cat")
 async def show_cat_callback(callback: CallbackQuery) -> None:
     """Show a random cat photo when button is clicked."""
