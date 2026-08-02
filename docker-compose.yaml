@@ -1,36 +1,52 @@
 services:
   bot:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # Очищаем кэш при сборке
+      args:
+        BUILDKIT_PROGRESS: plain
+        PIP_NO_CACHE_DIR: 1
     container_name: shishka-bot
     restart: unless-stopped
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
       - BOT_OWNER=${BOT_OWNER}
-      - PROXY_ENABLED=${PROXY_ENABLED:-true}
-      - PROXY_URL=${PROXY_URL}
+      - PROXY_ENABLED=${PROXY_ENABLED:-false}
+      - PROXY_URL=${PROXY_URL:-}
       - DB_URL=sqlite+aiosqlite:///data/db.sqlite
-      - BOT_WHITELIST=${BOT_WHILIST:-}
+      - BOT_WHITELIST=${BOT_WHITELIST:-}
       - GROUPS_MAIN=${GROUPS_MAIN}
-      - GROUPS_REPORTS=${GROUPS_REPORTS}
-      - GROUPS_LOGS=${GROUPS_LOGS}
+      - GROUPS_REPORTS=${GROUPS_REPORTS:-0}
+      - GROUPS_LOGS=${GROUPS_LOGS:-0}
       - LINKED_CHANNELS=${LINKED_CHANNELS:-}
       - HEALTHCHECK_ENABLED=${HEALTHCHECK_ENABLED:-true}
       - HEALTHCHECK_PORT=${HEALTHCHECK_PORT:-8080}
       - TZ=Europe/Moscow
-      - PYTHONUNBUFFERED=1  # Чтобы логи сразу выводились
+      - PYTHONUNBUFFERED=1
+      # Отключаем кэш Python в контейнере
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONHASHSEED=random
     ports:
       - "8081:8080"
     volumes:
-      - ./data:/app/data
+      # Монтируем ВСЕ папки с кодом для разработки
+      - ./:/app
+      # Но config.toml монтируем как только для чтения (безопасность)
       - ./config.toml:/app/config.toml:ro
+      # Монтируем папки с моделями отдельно (чтобы не пересобирать их)
+      - ./ruspam_model:/app/ruspam_model
+      - ./nsfw_model:/app/nsfw_model
+      # Данные (база данных)
+      - ./data:/app/data
+      # Локали
       - ./locales:/app/locales:ro
-      - ./ruspam_model:/app/ruspam_model 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s  # Увеличиваем, чтобы модели загрузились
     logging:
       driver: "json-file"
       options:
@@ -39,6 +55,6 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2G
+          memory: 4G  # Увеличиваем из-за NSFW модели
         reservations:
-          memory: 1G
+          memory: 1.5G
