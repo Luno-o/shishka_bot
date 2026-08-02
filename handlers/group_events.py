@@ -385,20 +385,31 @@ async def on_user_join(message: Message) -> None:
     ])
 
     # Пробуем отправить фото Шишки
+    
     try:
-        photos = await CatPhoto.objects.all()
-        if photos:
-            photo = random.choice(photos)
-            await message.answer_photo(
-                photo=photo.file_id,
-                caption=welcome_text,
-                reply_markup=keyboard
-            )
-            logger.info(f"🐱 Отправлено приветствие с фото Шишки #{photo.id} для {username}")
+        media_list = await CatPhoto.objects.all()
+        if media_list:
+            media = random.choice(media_list)
+            
+            # Отправляем в зависимости от типа
+            if media.media_type == 'animation':
+                await message.answer_animation(
+                    animation=media.file_id,
+                    caption=welcome_text,
+                    reply_markup=keyboard
+                )
+                logger.info(f"🐱 Отправлено приветствие с гифкой Шишки #{media.id} для {username}")
+            else:
+                await message.answer_photo(
+                    photo=media.file_id,
+                    caption=welcome_text,
+                    reply_markup=keyboard
+                )
+                logger.info(f"🐱 Отправлено приветствие с фото Шишки #{media.id} для {username}")
         else:
             await message.answer(welcome_text, reply_markup=keyboard)
     except Exception as e:
-        logger.error(f"❌ Ошибка при отправке фото Шишки: {e}")
+        logger.error(f"❌ Ошибка при отправке медиа Шишки: {e}")
         await message.answer(welcome_text, reply_markup=keyboard)
 
     await write_log(
