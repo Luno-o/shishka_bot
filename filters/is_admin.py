@@ -30,7 +30,7 @@ class IsAdminFilter(BaseFilter):
             return False
 
         # Владелец всегда админ
-        if event.from_user.id == config.owner:
+        if event.from_user.id == config.bot.owner:
             return True if self.is_admin else False
 
         if isinstance(event, CallbackQuery):
