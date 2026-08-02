@@ -13,7 +13,7 @@ class BotConfig(BaseModel):
     owner: int = 0
     token: SecretStr = SecretStr("")
     version: str = "0.7"
-    version_codename: str = "Eternal Ronin",
+    version_codename: str = "Shshulya",
     # Добавляем настройки прокси
     proxy_url: str = ""  # например: "http://user:pass@proxy.example.com:8080"
     proxy_enabled: bool = True  # флаг включения прокси

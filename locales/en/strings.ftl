@@ -340,15 +340,16 @@ welcome-short = 👋 Hello, { $username }! Welcome to the chat! :3
 # === RULES ===
 
 rules-message =
-    📋 <b>Chat Rules:</b>
-
-    1️⃣ 🚫 <b>No spam</b> — repeated messages, ads, unsolicited links.
-    2️⃣ 🤬 <b>No profanity</b> — swearing and insults are prohibited.
-    3️⃣ 🔞 <b>No NSFW content</b> — 18+ photos and videos.
-    4️⃣ 🤝 <b>Respect each other</b> — no personal attacks or bullying.
-    5️⃣ 📢 <b>No advertising</b> — only with admin approval.
-
-    Violations are subject to admin action.
+    rules-full =
+    ❗️ To protect the chat from bots - there is a rule:
+    Write any first message within 15 minutes after joining.
+    For example "hello"
+    If no message is sent within 15 minutes, the account will be automatically removed from the chat.
+    
+    ❗️ Any insults/spam/trolling are punished with 🍌 bans
+    
+    To cheer up - call Shishka!
+    Thanks for understanding ❤️
 
 rules-short =
     📋 <b>Rules in short:</b>

@@ -693,7 +693,7 @@ async def callback_nsfw_safe(call: CallbackQuery) -> None:
 async def show_rules_callback(callback: CallbackQuery) -> None:
     """Send short rules when button is clicked."""
     await callback.answer()
-    await callback.message.answer(get_string("rules-short"))
+    await callback.message.answer(get_string("rules-message"))
 
 @router.callback_query(F.data == "show_help")
 async def show_help_callback(callback: CallbackQuery) -> None:
