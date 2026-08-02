@@ -117,3 +117,41 @@ def is_loaded() -> bool:
 def get_last_used() -> float:
     """Get timestamp of last model usage."""
     return _last_used
+# ===== ДОБАВЛЯЕМ КЛАСС ДЛЯ СОВМЕСТИМОСТИ =====
+class SpamDetector:
+    """
+    Wrapper class for spam detection.
+    Provides compatibility with imports expecting a class.
+    """
+    
+    def __init__(self):
+        """Initialize spam detector."""
+        pass
+    
+    @staticmethod
+    def predict(text: str) -> bool:
+        """
+        Predict if text is spam.
+        
+        Args:
+            text: Text to check for spam
+            
+        Returns:
+            True if spam, False otherwise
+        """
+        return predict(text)
+    
+    @staticmethod
+    def preload():
+        """Preload the ML model."""
+        preload_model()
+    
+    @staticmethod
+    def unload():
+        """Unload the ML model to free memory."""
+        unload_model()
+    
+    @staticmethod
+    def is_loaded() -> bool:
+        """Check if model is loaded."""
+        return is_loaded()
