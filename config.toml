@@ -1,6 +1,6 @@
 [bot]
 owner = 0
-token = "8936100913:AAEgMhhCySKHKViVTtzWhq73jF7vHBTKCoU"
+token = ""
 version = "1.0.1"
 version_codename = "Shishka-bot"
 
@@ -22,16 +22,16 @@ available = ["ru", "en"]
 
 [groups]
 # list of main chat IDs where bot operates (can be multiple)
-main = [-1003933930273,-1002435031752]
+main = []
 
 # single channel for admin reports
-reports = -5142287184
+reports = 
 
 # single channel for logs
-logs = -5142287184
+logs = 
 
 # list of linked channels (for auto-forward/comment detection)
-linked_channels = [-1001708481256]
+linked_channels = []
 
 # time in seconds for new users media restriction
 new_users_nomedia = 900
