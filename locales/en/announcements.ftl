@@ -33,7 +33,7 @@ msg-chat-rules =
     
     📈 The chat has a <u>reputation system</u>
     ⛔️ Newbies cannot send media
-    🤬 Profanity is <u>automatically deleted</u>
+    🤝 Respect other chat members
     👹 Off-topic/spam is punished with 🍌 bananas
     
     <b>Peace to all 🤞</b>

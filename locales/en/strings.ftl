@@ -89,16 +89,6 @@ need-admins-attention = Dear admins, your presence in chat is needed!
     
     <a href="https://t.me/c/{ $chat_id }/{ $msg_id }">Go to message</a>
 
-# ========== RULES ==========
-rules-message = <b>Chat Rules:</b>
-
-    📈 This chat uses <u>reputation system</u>
-    ⛔️ Newbies cannot send media
-    🤬 Profanity/insults are prohibited and <u>removed automatically</u>
-    👹 For flooding/spam/trolling you will be 🍌 banned
-
-    <b>Peace 🤞</b>
-
 # ========== PROFANITY ==========
 profanity-user-kicked = Your Telegram name contains profanity.
     For this reason you were kicked from the chat.
@@ -333,6 +323,19 @@ welcome-v4 = 🌟 Shine bright, { $username }! 🐱 Shishka approves your choice
 welcome-v5 = 🏯 { $username }, the samurai path begins here! 🐱 Shishka will be your guide! 🗡️
 welcome-v6 = 🐾 { $username }, Shishka purrs "hello" to you! Hope you'll enjoy it here! 😺
 welcome-v7 = 🐱 { $username }, our fluffy moderator Shishka is already checking your profile... Just kidding! Welcome! 😸
+welcome-first-message-warning = ⚠️ Send any message within 15 minutes or the bot will remove you from the chat.
+
+# === HELP ===
+help-message =
+    📋 <b>Shishka bot commands</b>
+
+    /help — this help
+    /rules — chat rules
+    /me — statistics and reputation
+    /report — report a message (as a reply)
+    /shishka — random Shishka photo
+    /shish_tarot — your Shishka of the day
+    /бу — scare the bot
 
 # === SHORT WELCOMES ===
 welcome-short = 👋 Hello, { $username }! Welcome to the chat! :3

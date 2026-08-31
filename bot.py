@@ -23,6 +23,7 @@ from middlewares import register_all_middlewares
 from services.announcements import set_bot as set_announcements_bot, run_scheduler
 from services.healthcheck import start_health_server, stop_health_server, get_health_server
 from services.cache import start_batch_flush_task, stop_batch_flush_task, flush_member_updates
+from services.newcomer_guard import start_newcomer_checks, stop_newcomer_checks
 from services import ml_manager
 
 # Configure logging
@@ -49,6 +50,9 @@ async def on_startup(bot: Bot) -> None:
     # Initialize database
     await init_db()
     logger.info("Database connected")
+
+    await start_newcomer_checks(bot)
+    logger.info("Newcomer checks restored")
 
     # Start batch member update flush task (interval from config)
     start_batch_flush_task()
@@ -84,6 +88,9 @@ async def on_shutdown(bot: Bot) -> None:
     # Stop ML model monitor
     ml_manager.stop_monitor()
 
+    await stop_newcomer_checks()
+    logger.info("Newcomer checks stopped")
+
     # Cancel scheduler task
     if _scheduler_task and not _scheduler_task.done():
         _scheduler_task.cancel()
@@ -115,6 +122,9 @@ async def set_bot_commands(bot: Bot) -> None:
         BotCommand(command="help", description="Помощь"),
         BotCommand(command="rules", description="Правила чата"),
         BotCommand(command="shishka", description="Показать фото Шишки 🐱"),
+        BotCommand(command="shish_tarot", description="Шишка дня 🔮"),
+        BotCommand(command="me", description="Моя статистика"),
+        BotCommand(command="report", description="Пожаловаться на сообщение"),
         BotCommand(command="add_shishka", description="Добавить фото Шишки (админ)"),
         BotCommand(command="list_shishka", description="Список фото Шишки (админ)"),
         BotCommand(command="del_shishka", description="Удалить фото Шишки (админ)"),

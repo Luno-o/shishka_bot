@@ -34,6 +34,10 @@ CAT_COMMANDS = {
     InMainGroups(),
     F.text.lower().in_(CAT_COMMANDS),
 )
+@router.message(
+    InMainGroups(),
+    Command("shishka", prefix="!/"),
+)
 async def send_random_cat(message: Message) -> None:
     """Send a random cat photo or animation from the database."""
     try:

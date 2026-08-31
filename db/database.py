@@ -15,6 +15,8 @@ ormar_config = ormar.OrmarConfig(
 
 
 async def init_db() -> None:
+    async with ormar_config.engine.begin() as connection:
+        await connection.run_sync(ormar_config.metadata.create_all)
     if not ormar_config.database.is_connected:
         await ormar_config.database.connect()
 

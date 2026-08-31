@@ -1,7 +1,7 @@
 [project]
 name = "samurai-bot"
 version = "0.7.0"
-description = "Telegram group moderation bot with anti-spam, anti-profanity, and NSFW detection"
+description = "Telegram group bot with reputation, anti-spam, NSFW detection, and Shishka features"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -62,6 +62,8 @@ exclude = ["tests*", "libs*", "ruspam_model*"]
 [tool.ruff]
 line-length = 120
 target-version = "py311"
+
+[tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP"]
 ignore = ["E501"]
 

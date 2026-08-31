@@ -5,6 +5,7 @@ from aiogram import Dispatcher
 
 from .i18n import I18nMiddleware
 from .throttling import ThrottlingMiddleware
+from .newcomer_activity import NewcomerActivityMiddleware
 
 
 def register_all_middlewares(
@@ -26,6 +27,9 @@ def register_all_middlewares(
         throttle_max_messages: Max messages in time window
         throttle_time_window: Time window in seconds
     """
+    # Observe activity before any handler consumes the update.
+    dp.message.outer_middleware(NewcomerActivityMiddleware())
+
     # I18n middleware - adds i18n function to handler data
     i18n_middleware = I18nMiddleware(default_locale=default_locale)
     dp.message.middleware(i18n_middleware)
@@ -46,4 +50,5 @@ __all__ = [
     "register_all_middlewares",
     "I18nMiddleware",
     "ThrottlingMiddleware",
+    "NewcomerActivityMiddleware",
 ]

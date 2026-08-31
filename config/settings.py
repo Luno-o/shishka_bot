@@ -13,7 +13,8 @@ class BotConfig(BaseModel):
     owner: int = 0
     token: SecretStr = SecretStr("")
     version: str = "0.7"
-    version_codename: str = "Shshulya",
+    version_codename: str = "Shshulya"
+    timezone: str = "Europe/Moscow"
     # Добавляем настройки прокси
     proxy_url: str = ""  # например: "http://user:pass@proxy.example.com:8080"
     proxy_enabled: bool = True  # флаг включения прокси
@@ -37,6 +38,7 @@ class GroupsConfig(BaseModel):
     linked_channels: List[int] = []
     # time in seconds for new users media restriction
     new_users_nomedia: int = 7776000
+    newcomer_message_timeout: int = 900
     
     # cached sets for O(1) lookup (populated after init)
     _main_set: set = set()
@@ -62,6 +64,7 @@ class GroupsConfig(BaseModel):
 
 
 class SpamConfig(BaseModel):
+    exempt_reputation_threshold: int = 10
     member_messages_threshold: int = 10
     member_reputation_threshold: int = 10
     allow_media_threshold: int = 20

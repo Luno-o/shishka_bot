@@ -4,7 +4,6 @@ import sys
 if "./libs" not in sys.path:
     sys.path.insert(0, "./libs")
 
-from .profanity import check_for_profanity_all, check_name_for_violations
 from .gender import Gender, detect_gender
 from .cache import (
     retrieve_or_create_member,
@@ -15,8 +14,6 @@ from .cache import (
 )
 
 __all__ = [
-    "check_for_profanity_all",
-    "check_name_for_violations",
     "Gender",
     "detect_gender",
     "detect_gender_cached",

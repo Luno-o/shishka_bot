@@ -4,6 +4,7 @@ from .member_can_restrict import MemberCanRestrictFilter
 from .chat_id import ChatIdFilter
 from .in_main_groups import InMainGroups
 from .throttle import ThrottleFilter
+from .text_requests import HelpRequestFilter, TarotRequestFilter
 
 __all__ = [
     "IsOwnerFilter",
@@ -12,4 +13,6 @@ __all__ = [
     "ChatIdFilter",
     "InMainGroups",
     "ThrottleFilter",
+    "HelpRequestFilter",
+    "TarotRequestFilter",
 ]

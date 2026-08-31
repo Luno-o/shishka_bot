@@ -698,14 +698,7 @@ async def show_rules_callback(callback: CallbackQuery) -> None:
 @router.callback_query(F.data == "show_help")
 async def show_help_callback(callback: CallbackQuery) -> None:
     await callback.answer()
-    await callback.message.answer(
-        "📋 <b>Доступные команды:</b>\n"
-        "/rules — правила чата\n"
-        "/me — моя статистика\n"
-        "/report — пожаловаться на сообщение\n"
-        "/бу — развлечение\n"
-        "/help — эта справка"
-    )
+    await callback.message.answer(get_string("help-message"))
     
 
 @router.callback_query(F.data == "show_cat")

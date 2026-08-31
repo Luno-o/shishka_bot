@@ -25,20 +25,23 @@ available = ["ru", "en"]
 main = []
 
 # single channel for admin reports
-reports = 
+reports = 0
 
 # single channel for logs
-logs = 
+logs = 0
 
 # list of linked channels (for auto-forward/comment detection)
 linked_channels = []
 
 # time in seconds for new users media restriction
 new_users_nomedia = 900
+newcomer_message_timeout = 900
 #7776000
 
 
 [spam]
+# users with reputation above this value bypass moderation checks
+exempt_reputation_threshold = 10
 # after what amount of messages, anti-spam AI will stop checking this user
 member_messages_threshold = 15
 
