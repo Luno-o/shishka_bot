@@ -33,9 +33,7 @@ async def test_concurrent_requests_create_one_assignment():
     await add_photo("one")
     await add_photo("two")
 
-    results = await asyncio.gather(
-        *(get_daily_shishka(77, date(2026, 8, 31)) for _ in range(20))
-    )
+    results = await asyncio.gather(*(get_daily_shishka(77, date(2026, 8, 31)) for _ in range(20)))
 
     assert len({result.id for result in results}) == 1
     assert await ShishTarotReading.objects.filter(user_id=77).count() == 1

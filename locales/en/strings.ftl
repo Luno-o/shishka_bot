@@ -327,15 +327,20 @@ welcome-first-message-warning = ⚠️ Send any message within 15 minutes or the
 
 # === HELP ===
 help-message =
-    📋 <b>Shishka bot commands</b>
+    🐱 <b>Hello! I'm Shishka bot</b>
 
-    /help — this help
-    /rules — chat rules
-    /me — statistics and reputation
-    /report — report a message (as a reply)
-    /shishka — random Shishka photo
-    /shish_tarot — your Shishka of the day
-    /бу — scare the bot
+    I help keep the chat tidy and bring a little pine-cone magic ✨
+
+    📚 <b>Useful commands</b>
+    /help — open this guide
+    /rules — read the chat rules
+    /me — view your statistics and reputation
+    /report — report a message by replying to it
+
+    🌲 <b>Just for fun</b>
+    /shishka — get a random Shishka
+    /shish_tarot — reveal your Shishka of the day 🔮
+    /бу — try to scare the bot
 
 # === SHORT WELCOMES ===
 welcome-short = 👋 Hello, { $username }! Welcome to the chat! :3
@@ -343,7 +348,6 @@ welcome-short = 👋 Hello, { $username }! Welcome to the chat! :3
 # === RULES ===
 
 rules-message =
-    rules-full =
     ❗️ To protect the chat from bots - there is a rule:
     Write any first message within 15 minutes after joining.
     For example "hello"

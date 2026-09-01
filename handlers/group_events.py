@@ -94,16 +94,6 @@ async def on_bu_text(message: Message) -> None:
 
 @router.message(
     InMainGroups(),
-    Command("rules", "правила", prefix="!/"),
-    ThrottleFilter(interval=60, per_group=True)
-)
-async def on_rules(message: Message) -> None:
-    """Show chat rules (throttled per group - once per minute)."""
-    await message.answer(get_string("rules-message"))
-
-
-@router.message(
-    InMainGroups(),
     Command("me", "я", "info", "инфо", "lvl", "лвл", "whoami", "neofetch", "fastfetch", prefix="!/"),
     ThrottleFilter(interval=60, per_member=True, per_group=True)
 )

@@ -689,18 +689,6 @@ async def callback_nsfw_safe(call: CallbackQuery) -> None:
     )
     await call.answer(text="Done")
 
-@router.callback_query(F.data == "show_rules")
-async def show_rules_callback(callback: CallbackQuery) -> None:
-    """Send short rules when button is clicked."""
-    await callback.answer()
-    await callback.message.answer(get_string("rules-message"))
-
-@router.callback_query(F.data == "show_help")
-async def show_help_callback(callback: CallbackQuery) -> None:
-    await callback.answer()
-    await callback.message.answer(get_string("help-message"))
-    
-
 @router.callback_query(F.data == "show_cat")
 async def show_cat_callback(callback: CallbackQuery) -> None:
     """Show a random cat photo when button is clicked."""

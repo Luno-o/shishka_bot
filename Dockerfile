@@ -4,23 +4,23 @@ WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies (tzdata is pinned in requirements.txt)
+RUN python -m pip install --no-cache-dir --upgrade pip && \
+    python -m pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
 
-# Копируем скрипты и делаем entrypoint исполняемым
-COPY db_init_safe.py .
+# Копируем скрипт запуска и делаем entrypoint исполняемым
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
-COPY ruspam_model/ /app/ruspam_model/
 
 # Создаем пользователя и все необходимые директории с правильными правами
 RUN useradd -m -u 1000 botuser && \

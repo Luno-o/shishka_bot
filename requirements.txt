@@ -9,6 +9,7 @@ python-socks>=2.8.2
 
 # Configuration, localization, and caching
 python-dotenv>=1.0.0
+tzdata>=2024.1
 pydantic>=2.0.0,<3.0.0
 fluent-compiler>=1.0
 cachetools>=5.0.0
@@ -26,6 +27,7 @@ ujson>=5.10.0
 
 # ML models
 torch>=2.0.0
-transformers>=4.30.0
+transformers>=4.30.0,<5.0.0
+huggingface-hub>=0.20.0
 numpy>=1.24.0
 pillow>=10.0.0
