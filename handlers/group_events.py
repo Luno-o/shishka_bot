@@ -9,12 +9,16 @@ import asyncio
 import io
 import logging
 import random
+from html import escape
 from typing import Optional
 
-from aiogram import Router, F, Bot
+from aiogram import F, Router
 from aiogram.types import (
-    Message, ContentType, InlineKeyboardMarkup, InlineKeyboardButton,
-    ChatMemberAdministrator, ChatMemberOwner
+    ContentType,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+    User,
 )
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
@@ -24,14 +28,14 @@ import numpy as np
 
 from config import config
 from filters import IsOwnerFilter, InMainGroups, ThrottleFilter
-from db.models import Member, Spam, CatPhoto
-from services import (
-    retrieve_or_create_member, retrieve_tgmember, detect_gender,
-    check_for_profanity_all, check_name_for_violations, Gender
-)
+from db.models import CatPhoto, Spam
+from services.gender import Gender
 from services.spam import predict_async as ruspam_predict
 from services.nsfw import classify_explicit_content as nsfw_predict
 from services.cache import (
+    retrieve_or_create_member,
+    retrieve_tgmember,
+    detect_gender,
     queue_member_update,
     invalidate_member_cache,
     is_trusted_user,
@@ -43,6 +47,14 @@ from services.cache import (
     MemberData
 )
 from services.announcements import track_message
+from services.moderation_policy import (
+    contains_chinese,
+    contains_invisible_spacing,
+    contains_link,
+    is_moderation_exempt,
+    is_single_emoji,
+)
+from services.newcomer_guard import schedule_newcomer_check
 from utils import (
     get_string, _random, user_mention, write_log,
     generate_log_message, remove_prefix, get_message_text,
@@ -71,19 +83,13 @@ async def on_bu(message: Message) -> None:
     """Fun command - bot gets 'scared'."""
     await message.reply(_random("bu-responses"))
 
-# ===== НОВЫЙ ХЕНДЛЕР ДЛЯ "БУ" БЕЗ СЛЕША =====
 @router.message(
     InMainGroups(),
     F.text.lower().in_({"бу", "boo", "bу"})  # bу - это "бу" с латинской y
 )
-@router.message(
-    InMainGroups(),
-    Command("rules", "правила", prefix="!/"),
-    ThrottleFilter(interval=60, per_group=True)
-)
-async def on_rules(message: Message) -> None:
-    """Show chat rules (throttled per group - once per minute)."""
-    await message.answer(get_string("rules-message"))
+async def on_bu_text(message: Message) -> None:
+    """Fun command without a command prefix."""
+    await message.reply(_random("bu-responses"))
 
 
 @router.message(
@@ -102,9 +108,6 @@ async def on_me(message: Message) -> None:
     tg_member = await retrieve_tgmember(message.bot, message.chat.id, user_id)
 
     full_name = tg_member.user.full_name.strip()
-    is_profanity, bad_word = await check_for_profanity_all(full_name)
-    if is_profanity and bad_word:
-        full_name = full_name.replace(bad_word, '#' * len(bad_word))
 
     member_gender = detect_gender(tg_member.user.first_name)
 
@@ -321,17 +324,20 @@ async def on_punish(message: Message) -> None:
 
 @router.message(InMainGroups(), F.content_type == ContentType.NEW_CHAT_MEMBERS)
 async def on_user_join(message: Message) -> None:
-    """Remove 'user joined' service message and send a welcome message."""
+    """Handle every member from a Telegram batch join."""
     await message.delete()
 
-    new_user = message.new_chat_members[0]
+    for new_user in message.new_chat_members:
+        await _handle_joined_user(message, new_user)
 
-    # === АНТИСПАМ ОТ БОТОВ ===
+
+async def _handle_joined_user(message: Message, new_user: User) -> None:
+    """Apply bot policy, start the activity deadline, and send a welcome."""
     if new_user.is_bot:
-        logger.info(f"🤖 Обнаружен новый бот: {new_user.full_name} (@{new_user.username})")
+        logger.info("New bot detected: %s (@%s)", new_user.full_name, new_user.username)
 
         if new_user.id in config.bot.bot_whitelist:
-            logger.info(f"✅ Бот {new_user.full_name} в белом списке, пропускаем")
+            logger.info("Bot %s is allowlisted", new_user.full_name)
             await message.answer(
                 f"🤖 Привет, {new_user.full_name}! "
                 f"Ты в белом списке. Добро пожаловать! 🛡️"
@@ -343,11 +349,8 @@ async def on_user_join(message: Message) -> None:
             is_admin = bot_member.status in ("administrator", "creator")
 
             if not is_admin:
-                await message.bot.ban_chat_member(
-                    chat_id=message.chat.id,
-                    user_id=new_user.id
-                )
-                logger.info(f"🚫 Бот {new_user.full_name} удалён (нет прав администратора)")
+                await message.bot.ban_chat_member(chat_id=message.chat.id, user_id=new_user.id)
+                logger.info("Removed non-admin bot %s", new_user.full_name)
 
                 await write_log(
                     message.bot,
@@ -359,61 +362,64 @@ async def on_user_join(message: Message) -> None:
                     message.chat.title
                 )
                 return
-            else:
-                logger.info(f"✅ Бот {new_user.full_name} имеет права администратора, пропускаем")
-                return
+            logger.info("Bot %s is an administrator", new_user.full_name)
+            return
         except Exception as e:
-            logger.error(f"❌ Ошибка при проверке прав бота: {e}")
+            logger.error("Failed to verify bot permissions: %s", e)
             try:
-                await message.bot.ban_chat_member(
-                    chat_id=message.chat.id,
-                    user_id=new_user.id
-                )
-                logger.info(f"🚫 Бот {new_user.full_name} удалён (ошибка проверки)")
-            except:
-                pass
+                await message.bot.ban_chat_member(chat_id=message.chat.id, user_id=new_user.id)
+            except Exception:
+                logger.exception("Failed to remove unverified bot %s", new_user.id)
             return
 
-    # === ДАЛЬШЕ ОБЫЧНАЯ ЛОГИКА ДЛЯ ПОЛЬЗОВАТЕЛЕЙ ===
-    username = new_user.full_name or new_user.username or "Гость"
+    username = escape(new_user.full_name or new_user.username or "Гость")
+    member = await retrieve_or_create_member(new_user.id)
+    tg_member = await retrieve_tgmember(message.bot, message.chat.id, new_user.id)
+    requires_first_message = (
+        tg_member.status not in MemberStatus.admin_statuses()
+        and not is_moderation_exempt(member)
+    )
+    if requires_first_message:
+        await schedule_newcomer_check(
+            message.bot,
+            message.chat.id,
+            new_user.id,
+            config.groups.newcomer_message_timeout,
+        )
 
-    # Случайное приветствие
     welcome_keys = ["welcome-v1", "welcome-v2", "welcome-v3", "welcome-v4", "welcome-v5", "welcome-v6", "welcome-v7"]
     welcome_key = random.choice(welcome_keys)
     welcome_text = get_string(welcome_key, username=username)
+    if requires_first_message:
+        welcome_text += f"\n\n{get_string('welcome-first-message-warning')}"
 
-    # Кнопки
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📋 Правила", callback_data="show_rules")],
         [InlineKeyboardButton(text="🐱 Показать Шишку", callback_data="show_cat")]
     ])
 
-    # Пробуем отправить фото Шишки
-    
     try:
         media_list = await CatPhoto.objects.all()
         if media_list:
             media = random.choice(media_list)
-            
-            # Отправляем в зависимости от типа
-            if media.media_type == 'animation':
+            if media.media_type == "animation":
                 await message.answer_animation(
                     animation=media.file_id,
                     caption=welcome_text,
                     reply_markup=keyboard
                 )
-                logger.info(f"🐱 Отправлено приветствие с гифкой Шишки #{media.id} для {username}")
+                logger.info("Sent welcome animation #%s to %s", media.id, new_user.id)
             else:
                 await message.answer_photo(
                     photo=media.file_id,
                     caption=welcome_text,
                     reply_markup=keyboard
                 )
-                logger.info(f"🐱 Отправлено приветствие с фото Шишки #{media.id} для {username}")
+                logger.info("Sent welcome photo #%s to %s", media.id, new_user.id)
         else:
             await message.answer(welcome_text, reply_markup=keyboard)
     except Exception as e:
-        logger.error(f"❌ Ошибка при отправке медиа Шишки: {e}")
+        logger.error("Failed to send Shishka welcome media: %s", e)
         await message.answer(welcome_text, reply_markup=keyboard)
 
     await write_log(
@@ -428,6 +434,9 @@ async def on_user_join(message: Message) -> None:
 @router.message(InMainGroups(), F.content_type == ContentType.VOICE)
 async def on_user_voice(message: Message) -> None:
     """React to voice messages (discourage them)."""
+    member = await retrieve_or_create_member(message.from_user.id)
+    if is_moderation_exempt(member):
+        return
     if random.random() < 0.75:
         await message.reply(_random("voice-responses"))
         await queue_member_update(message.from_user.id, reputation_points=-10)
@@ -437,6 +446,9 @@ async def on_user_voice(message: Message) -> None:
 @router.message(InMainGroups(), F.content_type == ContentType.CONTACT)
 async def on_user_contact(message: Message) -> None:
     """Delete contact messages from non-admins."""
+    member = await retrieve_or_create_member(message.from_user.id)
+    if is_moderation_exempt(member):
+        return
     tg_member = await retrieve_tgmember(message.bot, message.chat.id, message.from_user.id)
 
     if tg_member.status not in MemberStatus.admin_statuses():
@@ -456,6 +468,8 @@ async def on_user_location(message: Message) -> None:
         return
 
     member = await retrieve_or_create_member(message.from_user.id)
+    if is_moderation_exempt(member):
+        return
 
     if member.reputation_points < config.spam.links_rep_threshold:
         await message.delete()
@@ -488,6 +502,8 @@ async def on_external_reply(message: Message) -> None:
         return
 
     member = await retrieve_or_create_member(message.from_user.id)
+    if is_moderation_exempt(member):
+        return
 
     if member.reputation_points < config.spam.external_reply_rep_threshold:
         await message.delete()
@@ -530,6 +546,8 @@ async def on_user_forward(message: Message) -> None:
             pass
 
     member = await retrieve_or_create_member(message.from_user.id)
+    if is_moderation_exempt(member):
+        return
     tg_member = await retrieve_tgmember(message.bot, message.chat.id, message.from_user.id)
 
     if tg_member.status in MemberStatus.admin_statuses():
@@ -571,6 +589,8 @@ async def on_user_forward(message: Message) -> None:
 async def on_user_media(message: Message) -> None:
     """Delete media from low-rep users."""
     member = await retrieve_or_create_member(message.from_user.id)
+    if is_moderation_exempt(member):
+        return
     tg_member = await retrieve_tgmember(message.bot, message.chat.id, message.from_user.id)
 
     if (tg_member.status not in MemberStatus.admin_statuses() and
@@ -618,6 +638,14 @@ async def on_user_message(message: Message) -> None:
     if tg_member.status in MemberStatus.admin_statuses():
         return
 
+    if is_moderation_exempt(member):
+        await queue_member_update(
+            message.from_user.id,
+            messages_count=1,
+            reputation_points=1,
+        )
+        return
+
     if message.content_type != ContentType.TEXT:
         if member.reputation_points < config.spam.allow_media_threshold:
             await message.delete()
@@ -627,7 +655,7 @@ async def on_user_message(message: Message) -> None:
     user_id = message.from_user.id
 
     if msg_text is not None:
-        if _contains_chinese(msg_text):
+        if contains_chinese(msg_text):
             await message.delete()
             await queue_member_update(
                 user_id,
@@ -641,7 +669,7 @@ async def on_user_message(message: Message) -> None:
             return
 
         if (member.reputation_points < config.spam.links_rep_threshold and
-                _contains_invisible_spacing(msg_text)):
+                contains_invisible_spacing(msg_text)):
             await message.delete()
             await queue_member_update(
                 user_id,
@@ -654,24 +682,8 @@ async def on_user_message(message: Message) -> None:
             await _maybe_autoban(message, member, 10, "невидимые символы")
             return
 
-        is_profanity, bad_word = await check_for_profanity_all(msg_text)
-
-        if is_profanity:
-            await message.delete()
-            await queue_member_update(
-                user_id,
-                violations_count_profanity=1,
-                reputation_points=-20
-            )
-            log_msg = msg_text
-            if bad_word:
-                log_msg = log_msg.replace(bad_word, f'<u><b>{bad_word}</b></u>')
-            log_msg += f"\n\n<i>Автор:</i> {user_mention(message.from_user)}"
-            await write_log(message.bot, log_msg, "🤬 Антимат", message.chat.title)
-            return
-
         if (member.reputation_points < config.spam.single_emoji_rep_threshold and
-                _is_single_emoji(msg_text)):
+                is_single_emoji(msg_text)):
             await message.delete()
             await queue_member_update(
                 user_id,
@@ -687,7 +699,7 @@ async def on_user_message(message: Message) -> None:
             return
 
         if (member.reputation_points < config.spam.links_rep_threshold and
-                _contains_link(message)):
+                contains_link(message)):
             await message.delete()
             await queue_member_update(
                 user_id,
@@ -788,13 +800,6 @@ async def check_for_unwanted(message: Message, msg_text: str, member: MemberData
     if is_low_rep and not is_nsfw_profile_on_cooldown(user_id):
         mark_nsfw_profile_checked(user_id)
 
-        if not check_name_for_violations(message.from_user.full_name):
-            await _report_nsfw(
-                message, msg_text, member, "🚫 Антиспам (имя)",
-                f"<i>Имя:</i> {message.from_user.full_name}"
-            )
-            return True
-
         profile_photos = await message.bot.get_user_profile_photos(user_id=user_id)
 
         if profile_photos.photos:
@@ -883,92 +888,6 @@ def _format_nsfw_scores(prediction: dict) -> str:
         "Hentai": "H", "Anime Picture": "A"
     }
     return " | ".join(f"{labels.get(k, k)}: {v}" for k, v in prediction.items())
-
-
-def _contains_link(message: Message) -> bool:
-    """Return True if message contains any URL or clickable link.
-
-    Uses Telegram's own entity parsing - covers plain URLs (http/https/t.me)
-    and inline hyperlinks (text_link entities).
-    """
-    entities = message.entities or message.caption_entities or []
-    return any(e.type in ("url", "text_link") for e in entities)
-
-
-def _is_single_emoji(text: str) -> bool:
-    """Return True if text contains exactly one emoji and nothing else.
-
-    Handles simple emoji, emoji + variation selector / skin-tone modifier,
-    and two-regional-indicator flag sequences (e.g. 🇺🇸).
-    ZWJ sequences (👨‍👩‍👧) are intentionally treated as multi-emoji so they
-    are NOT flagged - only trivial single-character bot spam is caught.
-    """
-    stripped = text.strip()
-    if not stripped:
-        return False
-    # Even the most exotic single emoji is < 10 UTF-16 code units
-    if len(stripped) > 10:
-        return False
-
-    _SKIP = {0xFE0F, 0x200D, 0x20E3}  # variation selector, ZWJ, combining keycap
-
-    base_count = 0
-    all_regional = True
-
-    for char in stripped:
-        cp = ord(char)
-
-        # Non-base combiners: skip without counting
-        if cp in _SKIP or 0x1F3FB <= cp <= 0x1F3FF:
-            continue
-
-        is_emoji = (
-            0x1F600 <= cp <= 0x1F64F or  # emoticons
-            0x1F300 <= cp <= 0x1F5FF or  # misc symbols & pictographs
-            0x1F680 <= cp <= 0x1F6FF or  # transport & map
-            0x1F700 <= cp <= 0x1FA6F or  # alchemical → chess symbols
-            0x1FA70 <= cp <= 0x1FAFF or  # symbols & pictographs extended-A
-            0x2600  <= cp <= 0x27BF  or  # misc symbols + dingbats
-            0x1F1E0 <= cp <= 0x1F1FF or  # regional indicators (flags)
-            0x2300  <= cp <= 0x23FF  or  # misc technical (⌚ etc.)
-            0x2B00  <= cp <= 0x2BFF  or  # misc symbols and arrows
-            cp in (0x00A9, 0x00AE, 0x2122)  # ©®™
-        )
-        if not is_emoji:
-            return False  # contains real text
-
-        if not (0x1F1E0 <= cp <= 0x1F1FF):
-            all_regional = False
-        base_count += 1
-
-    if base_count == 1:
-        return True  # ordinary single emoji
-    if base_count == 2 and all_regional:
-        return True  # flag (two regional indicator chars)
-    return False
-
-
-def _contains_invisible_spacing(text: str) -> bool:
-    """Check if text contains invisible Unicode spacing chars used in spam.
-
-    Spammers insert Hangul filler characters (U+115F, U+1160, U+3164, U+FFA0)
-    between words to evade keyword filters while appearing as normal spaces.
-    These have no legitimate use in Russian or English text.
-    """
-    _INVISIBLE_SPACING = {0x115F, 0x1160, 0x3164, 0xFFA0}
-    return any(ord(ch) in _INVISIBLE_SPACING for ch in text)
-
-
-def _contains_chinese(text: str) -> bool:
-    """Check if text contains Chinese characters (CJK Unified Ideographs)."""
-    for ch in text:
-        cp = ord(ch)
-        if (0x4E00 <= cp <= 0x9FFF or      # CJK Unified
-            0x3400 <= cp <= 0x4DBF or      # CJK Extension A
-            0x20000 <= cp <= 0x2A6DF or    # CJK Extension B
-            0xF900 <= cp <= 0xFAFF):       # CJK Compatibility
-            return True
-    return False
 
 
 def is_nsfw_detected(prediction: dict) -> bool:

@@ -1,67 +1,70 @@
+import logging
 from functools import lru_cache
 from pathlib import Path
 from tomllib import load
-from typing import Type, TypeVar, List
-import logging
-from pydantic import BaseModel, SecretStr, field_validator
+from typing import TypeVar
 
+from pydantic import BaseModel, SecretStr, field_validator
 
 ConfigType = TypeVar("ConfigType", bound=BaseModel)
 logger = logging.getLogger(__name__)
+
 
 class BotConfig(BaseModel):
     owner: int = 0
     token: SecretStr = SecretStr("")
     version: str = "0.7"
-    version_codename: str = "Shshulya",
+    version_codename: str = "Shshulya"
+    timezone: str = "Europe/Moscow"
     # Добавляем настройки прокси
     proxy_url: str = ""  # например: "http://user:pass@proxy.example.com:8080"
     proxy_enabled: bool = True  # флаг включения прокси
-    bot_whitelist: List[int] = []  # <-- Добавьте эту строку
-
+    bot_whitelist: list[int] = []  # <-- Добавьте эту строку
 
 
 class LocaleConfig(BaseModel):
     default: str = "ru"
-    available: List[str] = ["ru", "en"]
+    available: list[str] = ["ru", "en"]
 
 
 class GroupsConfig(BaseModel):
     # list of main chat IDs where bot operates
-    main: List[int] = []
+    main: list[int] = []
     # single channel for reports
     reports: int = 0
     # single channel for logs
     logs: int = 0
     # list of linked channels (for auto-forward detection)
-    linked_channels: List[int] = []
+    linked_channels: list[int] = []
     # time in seconds for new users media restriction
     new_users_nomedia: int = 7776000
-    
+    newcomer_message_timeout: int = 900
+
     # cached sets for O(1) lookup (populated after init)
     _main_set: set = set()
     _linked_channels_set: set = set()
-    
+
     def model_post_init(self, __context) -> None:
         """Build sets after model initialization."""
-        object.__setattr__(self, '_main_set', set(self.main))
-        object.__setattr__(self, '_linked_channels_set', set(self.linked_channels))
-    
+        object.__setattr__(self, "_main_set", set(self.main))
+        object.__setattr__(self, "_linked_channels_set", set(self.linked_channels))
+
     def is_main_group(self, chat_id: int) -> bool:
         """Check if chat_id is a main group (O(1) lookup)."""
         return chat_id in self._main_set
-    
+
     def is_linked_channel(self, chat_id: int) -> bool:
         """Check if chat_id is a linked channel (O(1) lookup)."""
         return chat_id in self._linked_channels_set
-    
+
     def rebuild_sets(self) -> None:
         """Rebuild sets after modifying lists."""
-        object.__setattr__(self, '_main_set', set(self.main))
-        object.__setattr__(self, '_linked_channels_set', set(self.linked_channels))
+        object.__setattr__(self, "_main_set", set(self.main))
+        object.__setattr__(self, "_linked_channels_set", set(self.linked_channels))
 
 
 class SpamConfig(BaseModel):
+    exempt_reputation_threshold: int = 10
     member_messages_threshold: int = 10
     member_reputation_threshold: int = 10
     allow_media_threshold: int = 20
@@ -69,7 +72,7 @@ class SpamConfig(BaseModel):
     allow_comments_rep_threshold: int = 50
     women_remove_first_comments_interval: int = 600
     allow_comments_rep_threshold__woman: int = 10
-    
+
     # single-emoji spam (bots spamming lone emojis)
     single_emoji_rep_threshold: int = 30  # delete single-emoji messages below this rep
 
@@ -82,7 +85,7 @@ class SpamConfig(BaseModel):
     # forward restriction for low-rep users
     allow_forwards_threshold: int = 30  # rep required to forward messages
     forward_violation_penalty: int = 10  # rep penalty for forwarding
-    
+
     # auto-ban for repeat spam offenders
     autoban_enabled: bool = True  # enable auto-ban for spam violations
     autoban_threshold: int = 100  # ban user when violations exceed this
@@ -111,8 +114,8 @@ class DatabaseConfig(BaseModel):
 class ThrottlingConfig(BaseModel):
     enabled: bool = True
     rate_limit: float = 0.5  # Minimum seconds between messages
-    max_messages: int = 20   # Max messages in time window
-    time_window: int = 60    # Time window in seconds
+    max_messages: int = 20  # Max messages in time window
+    time_window: int = 60  # Time window in seconds
 
 
 class HealthCheckConfig(BaseModel):
@@ -123,32 +126,33 @@ class HealthCheckConfig(BaseModel):
 
 class AnnouncementGroupConfig(BaseModel):
     """Per-group announcement settings override."""
+
     sleep_from: str | None = None  # "23:00" format
-    sleep_to: str | None = None    # "07:00" format
+    sleep_to: str | None = None  # "07:00" format
     utc_offset: int | None = None  # UTC offset in hours (e.g., 5 for UTC+5)
 
 
 class AnnouncementsConfig(BaseModel):
     enabled: bool = True
-    
+
     # track last N messages per group to avoid spam
     history_size: int = 20
-    
+
     # max announcements in recent history before pausing
     max_stack: int = 3
-    
+
     # don't re-send same announcement if it's in last N messages
     avoid_duplicate_in_last: int = 15
-    
+
     # global sleep time (when not to send announcements)
     sleep_from: str = ""  # "23:00" format, empty = no sleep
-    sleep_to: str = ""    # "07:00" format
-    utc_offset: int = 0   # UTC offset in hours (e.g., 5 for UTC+5)
-    
+    sleep_to: str = ""  # "07:00" format
+    utc_offset: int = 0  # UTC offset in hours (e.g., 5 for UTC+5)
+
     # per-group overrides (group_id -> settings)
     groups: dict[int, AnnouncementGroupConfig] = {}
-    
-    @field_validator('groups', mode='before')
+
+    @field_validator("groups", mode="before")
     @classmethod
     def convert_group_keys(cls, v):
         """Convert string keys from TOML to int."""
@@ -161,36 +165,37 @@ class CacheConfig(BaseModel):
     # member data cache
     members_maxsize: int = 500
     members_ttl: int = 60  # seconds
-    
+
     # telegram member cache
     tgmembers_maxsize: int = 1000
     tgmembers_ttl: int = 300  # seconds
-    
+
     # gender detection cache (LRU, no TTL)
     gender_maxsize: int = 500
-    
+
     # nsfw detection cache
     nsfw_maxsize: int = 200
     nsfw_ttl: int = 3600  # seconds
-    
+
     # batch update interval
     batch_flush_interval: int = 30  # seconds
-    
+
     # trusted user threshold (skip expensive checks)
     trusted_user_messages: int = 100
 
 
 class MLConfig(BaseModel):
     """ML model memory management settings."""
+
     # auto-unload models when not used
     auto_unload_enabled: bool = True
-    
+
     # time in minutes before unloading spam model
     spam_ttl_minutes: int = 10
-    
+
     # time in minutes before unloading nsfw model
     nsfw_ttl_minutes: int = 10
-    
+
     # check interval in seconds
     check_interval_seconds: int = 60
 
@@ -211,6 +216,7 @@ class Config(BaseModel):
 
 def get_config_path() -> Path:
     import os
+
     env_path = os.environ.get("CONFIG_FILE_PATH")
     if env_path:
         return Path(env_path)
@@ -231,15 +237,20 @@ def load_config() -> Config:
     return Config.model_validate(config_dict) if config_dict else Config()
 
 
-def _parse_int_list(value: str) -> List[int]:
+def _parse_int_list(value: str) -> list[int]:
     """Parse comma-separated list of integers from env var."""
     if not value:
         return []
     return [int(x.strip()) for x in value.split(",") if x.strip()]
 
 
+def _parse_bool(value: str) -> bool:
+    return value.strip().lower() in {"true", "1", "yes", "on"}
+
+
 def apply_env_overrides(config: Config) -> Config:
     import os
+
     from dotenv import load_dotenv
 
     if Path(".env").exists():
@@ -251,15 +262,17 @@ def apply_env_overrides(config: Config) -> Config:
         config.bot.owner = int(os.environ["BOT_OWNER"])
     if os.environ.get("BOT_LOCALE"):
         config.locale.default = os.environ["BOT_LOCALE"]
-    
-      # --- Настройки прокси из .env ---
+
+    # --- Настройки прокси из .env ---
     if os.environ.get("PROXY_URL"):
         config.bot.proxy_url = os.environ["PROXY_URL"]
         print(f"🌐 Прокси загружен: {config.bot.proxy_url}")
     if os.environ.get("PROXY_ENABLED"):
-        config.bot.proxy_enabled = os.environ["PROXY_ENABLED"].lower() in ("true", "1", "yes", "on")
+        config.bot.proxy_enabled = _parse_bool(os.environ["PROXY_ENABLED"])
         print(f"🔧 Прокси включен: {config.bot.proxy_enabled}")
-    
+    if os.environ.get("TZ"):
+        config.bot.timezone = os.environ["TZ"]
+
     if os.environ.get("BOT_WHITELIST"):
         try:
             # Поддерживаем форматы: "123456789" или "123456789,987654321"
@@ -271,7 +284,7 @@ def apply_env_overrides(config: Config) -> Config:
             logger.info(f"📋 Загружен белый список ботов: {config.bot.bot_whitelist}")
         except Exception as e:
             logger.warning(f"⚠️ Ошибка загрузки BOT_WHITELIST: {e}")
-    
+
     # groups - now supports comma-separated lists
     groups_changed = False
     if os.environ.get("GROUPS_MAIN"):
@@ -284,15 +297,17 @@ def apply_env_overrides(config: Config) -> Config:
     if os.environ.get("LINKED_CHANNELS"):
         config.groups.linked_channels = _parse_int_list(os.environ["LINKED_CHANNELS"])
         groups_changed = True
-    
+
     # rebuild sets after modifying lists
     if groups_changed:
         config.groups.rebuild_sets()
-    
+
     if os.environ.get("DB_URL"):
         config.db.url = os.environ["DB_URL"]
     if os.environ.get("HEALTHCHECK_PORT"):
         config.healthcheck.port = int(os.environ["HEALTHCHECK_PORT"])
+    if os.environ.get("HEALTHCHECK_ENABLED"):
+        config.healthcheck.enabled = _parse_bool(os.environ["HEALTHCHECK_ENABLED"])
 
     return config
 

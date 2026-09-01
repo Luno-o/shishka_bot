@@ -112,6 +112,13 @@ async def queue_member_update(user_id: int, **changes: int) -> None:
             current = _pending_updates[user_id].get(field, 0)
             _pending_updates[user_id][field] = current + delta
 
+        # Keep moderation decisions consistent with queued reputation changes.
+        cached_member = members_cache.get(user_id)
+        if cached_member is not None:
+            for field, delta in changes.items():
+                if hasattr(cached_member, field):
+                    setattr(cached_member, field, getattr(cached_member, field) + delta)
+
 
 async def flush_member_updates() -> int:
     """

@@ -6,9 +6,10 @@ scheduling tasks, and health checks.
 Author: Abraham (Priler)
 Github repo: https://github.com/Priler/samurai
 """
-import os
+
 import asyncio
 import logging
+import os
 import sys
 from contextlib import suppress
 
@@ -17,19 +18,18 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
 from config import config
-from db import init_db, close_db
+from db import close_db, init_db
 from handlers import register_all_handlers
 from middlewares import register_all_middlewares
-from services.announcements import set_bot as set_announcements_bot, run_scheduler
-from services.healthcheck import start_health_server, stop_health_server, get_health_server
-from services.cache import start_batch_flush_task, stop_batch_flush_task, flush_member_updates
-from services import ml_manager
+from services.announcements import run_scheduler
+from services.announcements import set_bot as set_announcements_bot
+from services.cache import flush_member_updates, start_batch_flush_task, stop_batch_flush_task
+from services.healthcheck import get_health_server, start_health_server, stop_health_server
+from services.newcomer_guard import start_newcomer_checks, stop_newcomer_checks
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
 )
 logger = logging.getLogger(__name__)
 
@@ -40,15 +40,19 @@ _scheduler_task: asyncio.Task | None = None
 async def on_startup(bot: Bot) -> None:
     """Startup hook."""
     global _scheduler_task
-    
+    from services import ml_manager
+
     logger.info("Bot starting up...")
 
-  # Установка команд бота
+    # Установка команд бота
     await set_bot_commands(bot)
 
     # Initialize database
     await init_db()
     logger.info("Database connected")
+
+    await start_newcomer_checks(bot)
+    logger.info("Newcomer checks restored")
 
     # Start batch member update flush task (interval from config)
     start_batch_flush_task()
@@ -56,7 +60,7 @@ async def on_startup(bot: Bot) -> None:
 
     # Setup announcements
     set_announcements_bot(bot)
-    
+
     # Start scheduler task
     _scheduler_task = asyncio.create_task(run_scheduler())
     logger.info("Announcements scheduled")
@@ -74,7 +78,8 @@ async def on_startup(bot: Bot) -> None:
 async def on_shutdown(bot: Bot) -> None:
     """Shutdown hook."""
     global _scheduler_task
-    
+    from services import ml_manager
+
     logger.info("Bot shutting down...")
 
     # Set health check to not ready
@@ -83,6 +88,9 @@ async def on_shutdown(bot: Bot) -> None:
 
     # Stop ML model monitor
     ml_manager.stop_monitor()
+
+    await stop_newcomer_checks()
+    logger.info("Newcomer checks stopped")
 
     # Cancel scheduler task
     if _scheduler_task and not _scheduler_task.done():
@@ -99,7 +107,7 @@ async def on_shutdown(bot: Bot) -> None:
     # Close database
     await close_db()
     logger.info("Database disconnected")
-    
+
     # Stop health check server
     if config.healthcheck.enabled:
         await stop_health_server()
@@ -109,17 +117,21 @@ async def on_shutdown(bot: Bot) -> None:
 async def set_bot_commands(bot: Bot) -> None:
     """Set bot commands menu."""
     from aiogram.types import BotCommand
-    
+
     commands = [
         BotCommand(command="start", description="Запустить бота"),
         BotCommand(command="help", description="Помощь"),
         BotCommand(command="rules", description="Правила чата"),
         BotCommand(command="shishka", description="Показать фото Шишки 🐱"),
+        BotCommand(command="shish_tarot", description="Шишка дня 🔮"),
+        BotCommand(command="me", description="Моя статистика"),
+        BotCommand(command="report", description="Пожаловаться на сообщение"),
         BotCommand(command="add_shishka", description="Добавить фото Шишки (админ)"),
         BotCommand(command="list_shishka", description="Список фото Шишки (админ)"),
         BotCommand(command="del_shishka", description="Удалить фото Шишки (админ)"),
     ]
     await bot.set_my_commands(commands)
+
 
 async def main() -> None:
     """Main function."""
@@ -128,13 +140,13 @@ async def main() -> None:
         logger.error("No bot token provided")
         sys.exit(1)
 
- # --- НАСТРОЙКА ПРОКСИ ЧЕРЕЗ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ---
+    # --- НАСТРОЙКА ПРОКСИ ЧЕРЕЗ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ---
     proxy_url = config.bot.proxy_url if config.bot.proxy_enabled else ""
-    
-    if proxy_url and proxy_url.startswith(('http://', 'https://')):
-        os.environ['HTTP_PROXY'] = proxy_url
-        os.environ['HTTPS_PROXY'] = proxy_url
-        os.environ['NO_PROXY'] = 'localhost,127.0.0.1'
+
+    if proxy_url and proxy_url.startswith(("http://", "https://")):
+        os.environ["HTTP_PROXY"] = proxy_url
+        os.environ["HTTPS_PROXY"] = proxy_url
+        os.environ["NO_PROXY"] = "localhost,127.0.0.1"
         logger.info(f"🌐 Установлены переменные прокси: {proxy_url}")
         logger.info("🔧 Исключен localhost из прокси")
     else:
@@ -145,24 +157,24 @@ async def main() -> None:
 
     # Start health check server
     if config.healthcheck.enabled:
-        await start_health_server(
-            host=config.healthcheck.host,
-            port=config.healthcheck.port
-        )
+        await start_health_server(host=config.healthcheck.host, port=config.healthcheck.port)
 
-     # --- Создание сессии с прокси через aiohttp ---
+    # --- Создание сессии с прокси через aiohttp ---
     session = None
     if config.bot.proxy_enabled and config.bot.proxy_url:
         try:
             from aiogram.client.session.aiohttp import AiohttpSession
+
             session = AiohttpSession(proxy=config.bot.proxy_url)
             logger.info(f"🌐 Используется прокси: {config.bot.proxy_url}")
         except Exception as e:
             logger.error(f"❌ Ошибка подключения прокси: {e}")
             from aiogram.client.session.aiohttp import AiohttpSession
+
             session = AiohttpSession()
     else:
         from aiogram.client.session.aiohttp import AiohttpSession
+
         session = AiohttpSession()
         if config.bot.proxy_url:
             logger.warning("⚠️ Прокси указан, но PROXY_ENABLED=false")
@@ -173,7 +185,7 @@ async def main() -> None:
     bot = Bot(
         token=config.bot.token.get_secret_value(),
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-        session=session  # <-- добавляем сессию с прокси
+        session=session,  # <-- добавляем сессию с прокси
     )
     dp = Dispatcher()
 
@@ -187,7 +199,7 @@ async def main() -> None:
         enable_throttling=config.throttling.enabled,
         throttle_rate=config.throttling.rate_limit,
         throttle_max_messages=config.throttling.max_messages,
-        throttle_time_window=config.throttling.time_window
+        throttle_time_window=config.throttling.time_window,
     )
 
     # Setup startup/shutdown hooks
@@ -204,5 +216,10 @@ async def main() -> None:
         await bot.session.close()
 
 
-if __name__ == "__main__":
+def run() -> None:
+    """Synchronous console entry point."""
     asyncio.run(main())
+
+
+if __name__ == "__main__":
+    run()
