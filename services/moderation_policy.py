@@ -1,19 +1,86 @@
 """Central moderation policy and inexpensive content checks."""
 
+from urllib.parse import urlparse
+
 from aiogram.types import Message
 
 from config import config
-from services.cache import MemberData
+from services.cache import MemberData, is_trusted_user
 
 
 def is_moderation_exempt(member: MemberData) -> bool:
-    """Users above the configured reputation threshold bypass moderation."""
-    return member.reputation_points > config.spam.exempt_reputation_threshold
+    """Users are exempt once they've earned trust either by reputation or by
+    sheer message volume.
+
+    The message-count fallback (`is_trusted_user`) matters in practice: a
+    long-standing, obviously-human member can still have reputation dip
+    below the threshold from a single media/voice-message penalty or a
+    false positive, and without this they'd suddenly start getting treated
+    like a brand-new account - which is exactly the "active users getting
+    blocked" complaint this exists to fix.
+    """
+    return (
+        member.reputation_points > config.spam.exempt_reputation_threshold
+        or is_trusted_user(member)
+    )
 
 
 def contains_link(message: Message) -> bool:
     entities = message.entities or message.caption_entities or []
     return any(entity.type in ("url", "text_link") for entity in entities)
+
+
+def _iter_link_targets(message: Message) -> list[str]:
+    """Return the *actual* destination of every link-like entity.
+
+    For a hyperlinked text entity ("text_link") this is `entity.url` - the
+    real href - never the clickable text, so a message that displays
+    "youtube.com" but actually links elsewhere can't spoof the allowlist.
+    For a plain autodetected "url" entity, the visible text *is* the link.
+    """
+    text = message.text or message.caption or ""
+    entities = message.entities or message.caption_entities or []
+    targets = []
+    for entity in entities:
+        if entity.type == "text_link" and entity.url:
+            targets.append(entity.url)
+        elif entity.type == "url":
+            targets.append(text[entity.offset : entity.offset + entity.length])
+    return targets
+
+
+def _extract_domain(url: str) -> str:
+    candidate = url if "://" in url else f"//{url}"
+    try:
+        return (urlparse(candidate).hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def is_allowlisted_link_only(message: Message, allowlist: list[str]) -> bool:
+    """True when *every* link in the message resolves to an allowlisted domain.
+
+    Callers should only consult this after `contains_link()` is already
+    True; a message with no links is not considered "allowlisted" here.
+    """
+    targets = _iter_link_targets(message)
+    if not targets:
+        return False
+
+    normalized_allowlist = {domain.lower().lstrip(".") for domain in allowlist if domain}
+    if not normalized_allowlist:
+        return False
+
+    for target in targets:
+        domain = _extract_domain(target)
+        if not domain:
+            return False
+        if not any(
+            domain == allowed or domain.endswith(f".{allowed}")
+            for allowed in normalized_allowlist
+        ):
+            return False
+    return True
 
 
 def is_single_emoji(text: str) -> bool:

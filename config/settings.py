@@ -91,6 +91,13 @@ class SpamConfig(BaseModel):
     autoban_threshold: int = 100  # ban user when violations exceed this
     autoban_rep_threshold: int = 100  # only auto-ban if rep is below this
 
+    # domains that are always allowed through the link filter even for
+    # low-reputation members (e.g. sharing a YouTube video is not spam).
+    # Matching is done against the *actual* link target (an entity's real
+    # URL, not its display text), so a disguised hyperlink cannot piggyback
+    # on the allowlist. Subdomains are matched too (m.youtube.com, etc.).
+    link_domain_allowlist: list[str] = ["youtube.com", "youtu.be"]
+
 
 class NSFWConfig(BaseModel):
     enabled: bool = True
@@ -109,6 +116,19 @@ class NSFWConfig(BaseModel):
 
 class DatabaseConfig(BaseModel):
     url: str = "sqlite+aiosqlite:///db.sqlite"
+
+
+class EphemeralConfig(BaseModel):
+    """Auto-delete settings for rules/help/stats replies (Telegram has no
+    native ephemeral messages, so we send-then-delete-later instead)."""
+
+    enabled: bool = True
+    # delete the command message (!rules, !help, !me, ...) once handled
+    delete_trigger: bool = True
+    # seconds before each kind of reply auto-deletes
+    help_ttl: int = 45
+    rules_ttl: int = 60
+    stats_ttl: int = 30
 
 
 class ThrottlingConfig(BaseModel):
@@ -207,6 +227,7 @@ class Config(BaseModel):
     spam: SpamConfig = SpamConfig()
     nsfw: NSFWConfig = NSFWConfig()
     db: DatabaseConfig = DatabaseConfig()
+    ephemeral: EphemeralConfig = EphemeralConfig()
     throttling: ThrottlingConfig = ThrottlingConfig()
     healthcheck: HealthCheckConfig = HealthCheckConfig()
     cache: CacheConfig = CacheConfig()

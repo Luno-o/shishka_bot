@@ -47,10 +47,12 @@ from services.cache import (
     MemberData
 )
 from services.announcements import track_message
+from services.ephemeral import cleanup_trigger, make_ephemeral
 from services.moderation_policy import (
     contains_chinese,
     contains_invisible_spacing,
     contains_link,
+    is_allowlisted_link_only,
     is_moderation_exempt,
     is_single_emoji,
 )
@@ -170,9 +172,14 @@ async def on_me(message: Message) -> None:
     answer += f"\n<b>{get_string('rep-title')}: </b>{member_level} <i> 『{member_rep}{member_rep_label} (<tg-spoiler>{member.reputation_points}</tg-spoiler>)』</i>"
 
     try:
-        await message.reply(answer)
+        sent = await message.reply(answer)
     except TelegramBadRequest:
-        pass
+        return
+
+    # stats/reputation lookups are ephemeral: clean up after ourselves so the
+    # chat doesn't fill up with "!me" call-and-response pairs.
+    make_ephemeral(message, sent, config.ephemeral.stats_ttl)
+    await cleanup_trigger(message)
 
 
 ### OWNER COMMANDS ###
@@ -699,7 +706,8 @@ async def on_user_message(message: Message) -> None:
             return
 
         if (member.reputation_points < config.spam.links_rep_threshold and
-                contains_link(message)):
+                contains_link(message) and
+                not is_allowlisted_link_only(message, config.spam.link_domain_allowlist)):
             await message.delete()
             await queue_member_update(
                 user_id,

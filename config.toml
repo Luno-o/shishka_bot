@@ -1,7 +1,7 @@
 [bot]
 owner = 0
 token = ""
-version = "1.0.1"
+version = "1.1.0"
 version_codename = "Shishka-bot"
 
 # Список ID ботов, которых НЕ трогать (белый список)
@@ -40,7 +40,18 @@ newcomer_message_timeout = 900
 
 
 [spam]
-# users with reputation above this value bypass moderation checks
+# Users bypass ALL moderation checks (links/spam-ML/NSFW/forwards/etc) once
+# EITHER of these is true:
+#   - reputation is above exempt_reputation_threshold, OR
+#   - they have sent at least [cache].trusted_user_messages good messages
+# The message-count fallback protects long-standing, clearly-human members
+# from being treated like brand-new accounts just because their reputation
+# temporarily dipped (a media/voice-message penalty, a false-positive, etc).
+#
+# NOTE: because exemption is a single on/off switch, any of the more
+# granular per-check thresholds below (links_rep_threshold, etc.) only ever
+# have an effect while reputation is still <= exempt_reputation_threshold.
+# Keep them below that value, otherwise they're silently unreachable.
 exempt_reputation_threshold = 10
 # after what amount of messages, anti-spam AI will stop checking this user
 member_messages_threshold = 15
@@ -72,6 +83,14 @@ single_emoji_rep_threshold = 15
 
 # reputation points required to post any links (URLs, t.me invites, etc.)
 links_rep_threshold = 20
+
+# domains that are always allowed through the link filter above, even for
+# low-reputation members - e.g. sharing a YouTube video is normal chat
+# activity, not spam. Matching uses the link's real target (not the
+# clickable text), so a disguised link can't abuse this list, and
+# subdomains match too (m.youtube.com, music.youtube.com, ...).
+# Messages still go through profanity/ML-spam/NSFW checks as usual.
+link_domain_allowlist = ["youtube.com", "youtu.be"]
 
 # reputation points required to use "Reply in Another Chat" (cross-chat replies)
 # bots and spammers abuse this to inject messages with external context
@@ -132,6 +151,22 @@ profile_check_cooldown = 3600
 
 [db]
 url = "sqlite+aiosqlite:///db.sqlite"
+
+
+[ephemeral]
+# Telegram has no native "ephemeral message" - this fakes it by
+# auto-deleting the bot's rules/help/stats replies after a delay, and
+# deleting the command that triggered them, so groups stay tidy.
+enabled = true
+
+# also delete the !rules / !help / !me command message itself (groups only;
+# private chats with the bot are left alone)
+delete_trigger = true
+
+# seconds before each reply auto-deletes
+help_ttl = 45
+rules_ttl = 60
+stats_ttl = 30
 
 
 [cache]
