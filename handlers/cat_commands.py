@@ -343,7 +343,11 @@ async def delete_cat_media(message: Message, command: CommandObject = None) -> N
             await message.answer("❌ ID должен быть числом!")
             return
 
-        media = await CatPhoto.objects.filter(id=media_id).first()
+        from ormar.exceptions import NoMatch
+        try:
+            media = await CatPhoto.objects.filter(id=media_id).first()
+        except NoMatch:
+            media = None
         if not media:
             await message.answer(f"❌ Медиа с ID {media_id} не найдено.")
             return

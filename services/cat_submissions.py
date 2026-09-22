@@ -50,7 +50,6 @@ def queue_submission(
     submitted_by: int,
 ) -> str:
     """Store a pending submission and return its short lookup key."""
-    _cleanup_old()
     key = uuid.uuid4().hex[:10]
     _pending[key] = {
         "file_id": file_id,
@@ -61,6 +60,10 @@ def queue_submission(
         "submitted_by": submitted_by,
         "submitted_at": datetime.now(),
     }
+    # Cleanup runs *after* inserting the new entry, otherwise the size cap is
+    # checked against the pre-insert count and the dict can grow to
+    # MAX_PENDING_SUBMISSIONS + 1 before an eviction ever triggers.
+    _cleanup_old()
     return key
 
 

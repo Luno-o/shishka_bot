@@ -9,6 +9,8 @@ auditable "warn 2 of 4" trail instead of an opaque reputation number.
 """
 from typing import Literal, Optional
 
+from ormar.exceptions import NoMatch
+
 from config import config
 from db.models import Warning
 
@@ -49,8 +51,9 @@ async def count_warnings(chat_id: int, user_id: int) -> int:
 
 async def remove_latest_warning(chat_id: int, user_id: int) -> bool:
     """Remove the most recent warning for a user in a chat. Returns True if one was removed."""
-    latest = await Warning.objects.filter(chat_id=chat_id, user_id=user_id).order_by("-date").first()
-    if latest is None:
+    try:
+        latest = await Warning.objects.filter(chat_id=chat_id, user_id=user_id).order_by("-date").first()
+    except NoMatch:
         return False
     await latest.delete()
     return True
