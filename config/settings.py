@@ -131,6 +131,45 @@ class EphemeralConfig(BaseModel):
     stats_ttl: int = 30
 
 
+class BackupConfig(BaseModel):
+    """Push-to-Telegram DB backups (complements scripts/backup_db.sh).
+
+    The bot sends a gzipped snapshot of its own database to `chat_id`
+    (defaults to the owner's DM) via the bot API - no SSH/server access
+    needed. `!backup_now` triggers one on demand; `enabled` turns on the
+    automatic nightly schedule as well.
+    """
+
+    enabled: bool = False
+    # who receives the backup document; 0 = bot.owner
+    chat_id: int = 0
+    # hours between automatic backups (only used when enabled=true)
+    interval_hours: int = 24
+
+
+class RaidGuardConfig(BaseModel):
+    """Detects mass-join raids (many accounts joining at once) and reacts
+    by temporarily restricting new joiners until things calm down."""
+
+    enabled: bool = True
+    # if this many users join within `window_seconds`, a raid is declared
+    join_threshold: int = 5
+    window_seconds: int = 30
+    # how long (seconds) newly joined users are kept read-only once a raid
+    # is declared, on top of the normal newcomer checks
+    restrict_seconds: int = 3600
+
+
+class WarnConfig(BaseModel):
+    """Formal warning ladder: !warn accumulates, escalating automatically."""
+
+    enabled: bool = True
+    # warning count at which each consequence kicks in
+    mute_1h_at: int = 2
+    mute_1d_at: int = 3
+    ban_at: int = 4
+
+
 class ThrottlingConfig(BaseModel):
     enabled: bool = True
     rate_limit: float = 0.5  # Minimum seconds between messages
@@ -228,6 +267,9 @@ class Config(BaseModel):
     nsfw: NSFWConfig = NSFWConfig()
     db: DatabaseConfig = DatabaseConfig()
     ephemeral: EphemeralConfig = EphemeralConfig()
+    backup: BackupConfig = BackupConfig()
+    raid_guard: RaidGuardConfig = RaidGuardConfig()
+    warn: WarnConfig = WarnConfig()
     throttling: ThrottlingConfig = ThrottlingConfig()
     healthcheck: HealthCheckConfig = HealthCheckConfig()
     cache: CacheConfig = CacheConfig()

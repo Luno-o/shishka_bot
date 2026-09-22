@@ -12,8 +12,11 @@ import random
 from html import escape
 from typing import Optional
 
+from datetime import datetime, timedelta, timezone
+
 from aiogram import F, Router
 from aiogram.types import (
+    ChatPermissions,
     ContentType,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -48,6 +51,7 @@ from services.cache import (
 )
 from services.announcements import track_message
 from services.ephemeral import cleanup_trigger, make_ephemeral
+from services.metrics import increment as record_metric
 from services.moderation_policy import (
     contains_chinese,
     contains_invisible_spacing,
@@ -57,6 +61,7 @@ from services.moderation_policy import (
     is_single_emoji,
 )
 from services.newcomer_guard import schedule_newcomer_check
+from services.raid_guard import raid_restrict_seconds, record_join, should_send_alert
 from utils import (
     get_string, _random, user_mention, write_log,
     generate_log_message, remove_prefix, get_message_text,
@@ -386,18 +391,54 @@ async def _handle_joined_user(message: Message, new_user: User) -> None:
         tg_member.status not in MemberStatus.admin_statuses()
         and not is_moderation_exempt(member)
     )
+
+    # Anti-raid: a burst of joins triggers a temporary read-only restriction
+    # instead of the normal "send a message or get removed" newcomer check
+    # (which would otherwise unfairly kick people who literally can't reply).
+    is_raid = record_join(message.chat.id)
+    raid_restricted = False
+
     if requires_first_message:
-        await schedule_newcomer_check(
-            message.bot,
-            message.chat.id,
-            new_user.id,
-            config.groups.newcomer_message_timeout,
-        )
+        if is_raid:
+            until = datetime.now(timezone.utc) + timedelta(seconds=raid_restrict_seconds())
+            try:
+                await message.bot.restrict_chat_member(
+                    chat_id=message.chat.id,
+                    user_id=new_user.id,
+                    permissions=ChatPermissions(can_send_messages=False),
+                    until_date=until,
+                )
+                raid_restricted = True
+            except Exception:
+                logger.exception("Failed to restrict newcomer %s during raid", new_user.id)
+
+            if should_send_alert(message.chat.id):
+                record_metric("raids_detected")
+                await write_log(
+                    message.bot,
+                    f"⚠️ Похоже на рейд: слишком много новых участников за короткое время.\n"
+                    f"Новички временно ограничены в отправке сообщений "
+                    f"(~{raid_restrict_seconds() // 60} мин), пока админы не разберутся.",
+                    "🛡️ Антирейд",
+                    message.chat.title
+                )
+        else:
+            await schedule_newcomer_check(
+                message.bot,
+                message.chat.id,
+                new_user.id,
+                config.groups.newcomer_message_timeout,
+            )
 
     welcome_keys = ["welcome-v1", "welcome-v2", "welcome-v3", "welcome-v4", "welcome-v5", "welcome-v6", "welcome-v7"]
     welcome_key = random.choice(welcome_keys)
     welcome_text = get_string(welcome_key, username=username)
-    if requires_first_message:
+    if raid_restricted:
+        welcome_text += (
+            "\n\n🛡️ Сейчас в чате повышенная активность новых участников, "
+            "поэтому отправка сообщений временно ограничена для новичков."
+        )
+    elif requires_first_message:
         welcome_text += f"\n\n{get_string('welcome-first-message-warning')}"
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -635,6 +676,7 @@ async def on_user_message(message: Message) -> None:
     NOTE: This handler MUST be last in this file!
     """
     track_message(message.chat.id, is_announcement=False)
+    record_metric("messages_seen")
 
     if message.from_user is None:
         return
@@ -669,6 +711,7 @@ async def on_user_message(message: Message) -> None:
                 violations_count_spam=1,
                 reputation_points=-5
             )
+            record_metric("spam_deleted_cn")
             log_msg = msg_text
             log_msg += f"\n\n<i>Автор:</i> {user_mention(message.from_user)}"
             await write_log(message.bot, log_msg, "🈲 Антиспам (CN)", message.chat.title)
@@ -683,6 +726,7 @@ async def on_user_message(message: Message) -> None:
                 violations_count_spam=1,
                 reputation_points=-10
             )
+            record_metric("spam_deleted_invisible_spacing")
             log_msg = msg_text
             log_msg += f"\n\n<i>Автор:</i> {user_mention(message.from_user)}"
             await write_log(message.bot, log_msg, "👻 Антиспам (невидимые символы)", message.chat.title)
@@ -697,6 +741,7 @@ async def on_user_message(message: Message) -> None:
                 violations_count_spam=1,
                 reputation_points=-5
             )
+            record_metric("spam_deleted_single_emoji")
             await write_log(
                 message.bot,
                 f"{msg_text}\n\n<i>Автор:</i> {user_mention(message.from_user)}",
@@ -714,6 +759,7 @@ async def on_user_message(message: Message) -> None:
                 violations_count_spam=1,
                 reputation_points=-10
             )
+            record_metric("spam_deleted_link")
             await write_log(
                 message.bot,
                 f"{msg_text}\n\n<i>Автор:</i> {user_mention(message.from_user)}",
@@ -733,6 +779,7 @@ async def on_user_message(message: Message) -> None:
                 is_spam = await ruspam_predict(msg_text)
                 logger.info(f"🔍 Результат проверки спама: {is_spam} (тип: {type(is_spam)})")
                 if is_spam:
+                    record_metric("spam_deleted_ml")
                     await message.delete()
                     await queue_member_update(
                         user_id,
@@ -844,6 +891,7 @@ async def _maybe_autoban(
     if (new_violations >= config.spam.autoban_threshold and
             new_rep < config.spam.autoban_rep_threshold):
         try:
+            record_metric("autobans")
             await message.bot.ban_chat_member(
                 chat_id=message.chat.id,
                 user_id=message.from_user.id
@@ -865,6 +913,7 @@ async def _report_nsfw(
     log_label: str, extra_info: str = None
 ) -> None:
     """Delete message and report to log channel with action buttons."""
+    record_metric("nsfw_catches")
     log_msg = msg_text or "[медиа без текста]"
     if extra_info:
         log_msg += f"\n\n{extra_info}"

@@ -23,6 +23,7 @@ from handlers import register_all_handlers
 from middlewares import register_all_middlewares
 from services.announcements import run_scheduler
 from services.announcements import set_bot as set_announcements_bot
+from services.backup import run_backup_scheduler
 from services.cache import flush_member_updates, start_batch_flush_task, stop_batch_flush_task
 from services.healthcheck import get_health_server, start_health_server, stop_health_server
 from services.newcomer_guard import start_newcomer_checks, stop_newcomer_checks
@@ -35,11 +36,12 @@ logger = logging.getLogger(__name__)
 
 # Global reference to scheduler task for cleanup
 _scheduler_task: asyncio.Task | None = None
+_backup_scheduler_task: asyncio.Task | None = None
 
 
 async def on_startup(bot: Bot) -> None:
     """Startup hook."""
-    global _scheduler_task
+    global _scheduler_task, _backup_scheduler_task
     from services import ml_manager
 
     logger.info("Bot starting up...")
@@ -65,6 +67,9 @@ async def on_startup(bot: Bot) -> None:
     _scheduler_task = asyncio.create_task(run_scheduler())
     logger.info("Announcements scheduled")
 
+    # Start automatic backup scheduler (no-op if backup.enabled = false)
+    _backup_scheduler_task = asyncio.create_task(run_backup_scheduler(bot))
+
     # Start ML model auto-unload monitor
     ml_manager.start_monitor()
 
@@ -77,7 +82,7 @@ async def on_startup(bot: Bot) -> None:
 
 async def on_shutdown(bot: Bot) -> None:
     """Shutdown hook."""
-    global _scheduler_task
+    global _scheduler_task, _backup_scheduler_task
     from services import ml_manager
 
     logger.info("Bot shutting down...")
@@ -98,6 +103,13 @@ async def on_shutdown(bot: Bot) -> None:
         with suppress(asyncio.CancelledError):
             await _scheduler_task
         logger.info("Scheduler stopped")
+
+    # Cancel backup scheduler task
+    if _backup_scheduler_task and not _backup_scheduler_task.done():
+        _backup_scheduler_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await _backup_scheduler_task
+        logger.info("Backup scheduler stopped")
 
     # Stop batch flush task and flush remaining updates
     stop_batch_flush_task()
@@ -125,8 +137,13 @@ async def set_bot_commands(bot: Bot) -> None:
         BotCommand(command="shishka", description="Показать фото Шишки 🐱"),
         BotCommand(command="shish_tarot", description="Шишка дня 🔮"),
         BotCommand(command="me", description="Моя статистика"),
+        BotCommand(command="top", description="Топ по репутации"),
         BotCommand(command="report", description="Пожаловаться на сообщение"),
         BotCommand(command="add_shishka", description="Добавить фото Шишки (админ)"),
+        BotCommand(command="add_shis_friend", description="Добавить фото кота-друга (админ)"),
+        BotCommand(command="shis_friends", description="Показать фото кота-друга 🐾"),
+        BotCommand(command="submit_shishka", description="Предложить фото Шишки на модерацию"),
+        BotCommand(command="submit_shis_friend", description="Предложить фото кота-друга на модерацию"),
         BotCommand(command="list_shishka", description="Список фото Шишки (админ)"),
         BotCommand(command="del_shishka", description="Удалить фото Шишки (админ)"),
     ]

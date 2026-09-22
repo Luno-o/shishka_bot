@@ -134,6 +134,25 @@ async def cmd_reload_announcements(message: Message) -> None:
 
 @router.message(
     IsOwnerFilter(),
+    Command("backup_now", "backup", prefix="!/")
+)
+async def cmd_backup_now(message: Message) -> None:
+    """Snapshot the DB and send it here as a document (owner only)."""
+    from services.backup import create_backup
+
+    status = await message.reply("💾 Делаю резервную копию базы данных...")
+    ok = await create_backup(message.bot, chat_id=message.chat.id)
+    if ok:
+        try:
+            await status.delete()
+        except Exception:
+            pass
+    else:
+        await status.edit_text("❌ Не удалось создать резервную копию. Подробности в логах бота.")
+
+
+@router.message(
+    IsOwnerFilter(),
     Command("chatid", prefix="!/")
 )
 async def cmd_chat_id(message: Message) -> None:

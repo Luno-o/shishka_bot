@@ -15,3 +15,5 @@ class CatPhoto(ormar.Model):
     added_at: datetime = ormar.DateTime(default=datetime.now)
     description: str = ormar.String(max_length=500, nullable=True)
     media_type: str = ormar.String(max_length=20, default="photo")  # 'photo' или 'animation'
+    category: str = ormar.String(max_length=20, default="shishka")  # 'shishka' или 'friend'
+    submitted_by: int = ormar.BigInteger(nullable=True)  # user who submitted (if via !submit_*, else None)

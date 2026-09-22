@@ -16,9 +16,10 @@ from db.models import (  # noqa: E402
     PendingNewcomer,
     ShishTarotReading,
     Spam,
+    Warning,
 )
 
-MODELS = (PendingNewcomer, ShishTarotReading, CatPhoto, Spam, Member)
+MODELS = (PendingNewcomer, ShishTarotReading, CatPhoto, Spam, Member, Warning)
 
 
 @pytest.fixture(scope="session", autouse=True)

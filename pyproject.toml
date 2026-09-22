@@ -70,3 +70,10 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Without this, a bare `pytest` (the console-script entry point) doesn't put
+# the project root on sys.path, so top-level packages like `db`/`services`/
+# `handlers` fail to import from tests/conftest.py with
+# "ModuleNotFoundError: No module named 'db'". `python -m pytest` happens to
+# work anyway (the `-m` flag itself adds cwd to sys.path), which is why this
+# can go unnoticed for a while. Needs pytest>=7.0 (already pinned above).
+pythonpath = ["."]

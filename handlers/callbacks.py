@@ -16,12 +16,14 @@ from aiogram.types import CallbackQuery, ChatPermissions
 from aiogram.exceptions import TelegramBadRequest
 
 from config import config
-from db.models import Member, Spam
+from db.models import CatPhoto, Member, Spam
 from services.reports import remove_report
 from services.cache import queue_member_update
+from services.cat_submissions import pop_submission
+from services.metrics import increment as record_metric
 from utils import get_string, _random
 from handlers.personal_actions import pending_messages
-from handlers.cat_commands import send_random_cat
+from handlers.cat_commands import CATEGORY_LABELS, send_random_cat
 
 router = Router(name="callbacks")
 logger = logging.getLogger(__name__)
@@ -694,3 +696,65 @@ async def show_cat_callback(callback: CallbackQuery) -> None:
     """Show a random cat photo when button is clicked."""
     await callback.answer("🐱 Ищу Шишку...")
     await send_random_cat(callback.message)
+
+
+### CAT SUBMISSION REVIEW CALLBACKS ###
+
+@router.callback_query(F.data.startswith("catsub_ok_"))
+@safe_callback
+async def callback_cat_submission_approve(call: CallbackQuery) -> None:
+    """Approve a user-submitted cat photo: add it to the database."""
+    key = call.data[len("catsub_ok_"):]
+    submission = pop_submission(key)
+
+    if submission is None:
+        await call.answer("⌛ Заявка устарела или уже обработана", show_alert=True)
+        return
+
+    from ormar.exceptions import NoMatch
+    try:
+        existing = await CatPhoto.objects.filter(file_unique_id=submission["file_unique_id"]).first()
+    except NoMatch:
+        existing = None
+
+    if existing is None:
+        await CatPhoto.objects.create(
+            file_id=submission["file_id"],
+            file_unique_id=submission["file_unique_id"],
+            added_by=submission["submitted_by"],
+            description=submission["description"],
+            media_type=submission["media_type"],
+            category=submission["category"],
+            submitted_by=submission["submitted_by"],
+        )
+        record_metric("cat_photos_added")
+
+    label = CATEGORY_LABELS.get(submission["category"], submission["category"])
+    suffix = " (уже было в базе)" if existing else ""
+    caption = (call.message.caption or call.message.text or "") + f"\n\n✅ <b>Одобрено ({label}){suffix}</b>"
+    with suppress(TelegramBadRequest):
+        if call.message.caption is not None:
+            await call.message.edit_caption(caption=caption)
+        else:
+            await call.message.edit_text(caption)
+    await call.answer("Добавлено!")
+
+
+@router.callback_query(F.data.startswith("catsub_no_"))
+@safe_callback
+async def callback_cat_submission_reject(call: CallbackQuery) -> None:
+    """Reject a user-submitted cat photo."""
+    key = call.data[len("catsub_no_"):]
+    submission = pop_submission(key)
+
+    if submission is None:
+        await call.answer("⌛ Заявка устарела или уже обработана", show_alert=True)
+        return
+
+    caption = (call.message.caption or call.message.text or "") + "\n\n❌ <b>Отклонено</b>"
+    with suppress(TelegramBadRequest):
+        if call.message.caption is not None:
+            await call.message.edit_caption(caption=caption)
+        else:
+            await call.message.edit_text(caption)
+    await call.answer("Отклонено")
