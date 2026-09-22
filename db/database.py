@@ -33,6 +33,8 @@ def _add_missing_columns(connection: Connection) -> None:
         "cat_photos": {
             "description": "VARCHAR(500)",
             "media_type": "VARCHAR(20) NOT NULL DEFAULT 'photo'",
+            "category": "VARCHAR(20) NOT NULL DEFAULT 'shishka'",
+            "submitted_by": "BIGINT",
         },
         "members": {
             "date": "DATETIME",
@@ -60,6 +62,9 @@ def _add_missing_columns(connection: Connection) -> None:
     if "cat_photos" in tables:
         connection.execute(
             text("UPDATE cat_photos SET media_type = 'photo' WHERE media_type IS NULL OR media_type = ''")
+        )
+        connection.execute(
+            text("UPDATE cat_photos SET category = 'shishka' WHERE category IS NULL OR category = ''")
         )
     if "members" in tables:
         connection.execute(text("UPDATE members SET date = CURRENT_TIMESTAMP WHERE date IS NULL"))

@@ -8,6 +8,8 @@ import asyncio
 import logging
 from aiohttp import web
 
+from services import metrics
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,6 +38,7 @@ class HealthCheckServer:
         # Setup routes
         self.app.router.add_get("/health", self._health_handler)
         self.app.router.add_get("/ready", self._ready_handler)
+        self.app.router.add_get("/metrics", self._metrics_handler)
         self.app.router.add_get("/", self._health_handler)
     
     async def _health_handler(self, request: web.Request) -> web.Response:
@@ -61,6 +64,14 @@ class HealthCheckServer:
             status=503
         )
     
+    async def _metrics_handler(self, request: web.Request) -> web.Response:
+        """
+        Lightweight JSON metrics endpoint (message/spam/ban/warn counters,
+        uptime). Not Prometheus text format - plain JSON, easy to poll from
+        a script or a dashboard without extra dependencies.
+        """
+        return web.json_response(metrics.snapshot())
+
     def set_ready(self, ready: bool = True) -> None:
         """Set the readiness status."""
         self._is_ready = ready

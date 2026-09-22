@@ -1,7 +1,7 @@
 [bot]
 owner = 0
 token = ""
-version = "1.1.0"
+version = "1.2.0"
 version_codename = "Shishka-bot"
 
 # Список ID ботов, которых НЕ трогать (белый список)
@@ -167,6 +167,44 @@ delete_trigger = true
 help_ttl = 45
 rules_ttl = 60
 stats_ttl = 30
+
+
+[backup]
+# Push-to-Telegram database backups: the bot gzips its own DB file and sends
+# it to `chat_id` via bot.send_document - no SSH/server access needed.
+# Complements scripts/backup_db.sh (which pulls a copy to your laptop).
+# `!backup_now` (owner only) always works regardless of `enabled`.
+enabled = false
+
+# who receives the backup document; 0 = send to [bot].owner's DM
+chat_id = 0
+
+# hours between automatic backups (only used when enabled = true)
+interval_hours = 24
+
+
+[raid_guard]
+# Detects mass-join raids (many accounts/bots joining at once) and reacts
+# by temporarily restricting new joiners (read-only) until things calm down.
+enabled = true
+
+# declare a raid if this many users join within window_seconds
+join_threshold = 5
+window_seconds = 30
+
+# seconds new joiners stay read-only once a raid is declared
+restrict_seconds = 3600
+
+
+[warn]
+# Formal warning ladder for !warn (reply to a message, admin only).
+# Warnings accumulate per user; at each threshold below, a consequence is
+# applied automatically. Use !warns to check a user's count, !unwarn to
+# remove their most recent warning.
+enabled = true
+mute_1h_at = 2
+mute_1d_at = 3
+ban_at = 4
 
 
 [cache]
