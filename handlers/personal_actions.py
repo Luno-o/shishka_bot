@@ -151,6 +151,62 @@ async def cmd_backup_now(message: Message) -> None:
         await status.edit_text("❌ Не удалось создать резервную копию. Подробности в логах бота.")
 
 
+_METRIC_LABELS = {
+    "messages_seen": "Сообщений обработано",
+    "spam_deleted_cn": "Удалено спама (китайские иероглифы)",
+    "spam_deleted_invisible_spacing": "Удалено спама (невидимые пробелы)",
+    "spam_deleted_single_emoji": "Удалено спама (одинокие эмодзи)",
+    "spam_deleted_link": "Удалено спама (ссылки)",
+    "spam_deleted_ml": "Удалено спама (ML-модель)",
+    "autobans": "Автобанов",
+    "nsfw_catches": "NSFW-находок",
+    "raids_detected": "Обнаружено рейдов",
+    "cat_photos_added": "Добавлено фото котиков",
+    "warnings_issued": "Выдано предупреждений",
+}
+
+
+def _format_uptime(seconds: float) -> str:
+    total = int(seconds)
+    days, rem = divmod(total, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, _ = divmod(rem, 60)
+    parts = []
+    if days:
+        parts.append(f"{days}д")
+    if days or hours:
+        parts.append(f"{hours}ч")
+    parts.append(f"{minutes}м")
+    return " ".join(parts)
+
+
+@router.message(
+    IsOwnerFilter(),
+    Command("metrics", prefix="!/")
+)
+async def cmd_metrics(message: Message) -> None:
+    """
+    Show the same counters as the HTTP /metrics endpoint, but right in the
+    chat - no server access needed (owner only).
+    """
+    from services.metrics import snapshot
+
+    data = snapshot()
+    counters = data["counters"]
+
+    if not counters:
+        counters_text = "пока нет данных"
+    else:
+        lines = [f"• {_METRIC_LABELS.get(name, name)}: <b>{value}</b>" for name, value in counters.items()]
+        counters_text = "\n".join(lines)
+
+    await message.reply(
+        f"📊 <b>Метрики бота</b>\n"
+        f"Аптайм: {_format_uptime(data['uptime_seconds'])}\n\n"
+        f"{counters_text}"
+    )
+
+
 @router.message(
     IsOwnerFilter(),
     Command("chatid", prefix="!/")
