@@ -24,3 +24,22 @@ def test_reset_clears_counters():
     metrics.increment("messages_seen")
     metrics.reset()
     assert metrics.get_counters() == {}
+
+
+def test_prometheus_text_contains_help_type_and_values():
+    metrics.reset()
+    metrics.increment("autobans", 2)
+
+    text = metrics.to_prometheus_text()
+
+    assert "# HELP shishka_bot_uptime_seconds" in text
+    assert "# TYPE shishka_bot_events_total counter" in text
+    assert 'shishka_bot_events_total{name="autobans"} 2' in text
+    assert text.endswith("\n")
+
+
+def test_prometheus_text_with_no_counters_still_has_uptime():
+    metrics.reset()
+    text = metrics.to_prometheus_text()
+    assert "shishka_bot_uptime_seconds" in text
+    assert "shishka_bot_events_total{" not in text
