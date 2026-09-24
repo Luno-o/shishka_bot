@@ -1,11 +1,91 @@
 """Central moderation policy and inexpensive content checks."""
 
+from typing import Optional
 from urllib.parse import urlparse
 
 from aiogram.types import Message
 
 from config import config
 from services.cache import MemberData, is_trusted_user
+
+# --- Chat-editable link allowlist (!linkallow / !linkdeny, admin_actions.py) ---
+#
+# config.spam.link_domain_allowlist is static (loaded once at startup from
+# config.toml). This in-memory set holds domains admins add from chat, backed
+# by the AllowedDomain table so they survive a restart. The two lists are
+# merged at check time by get_effective_allowlist() - nothing here replaces
+# the config list, it only adds to it.
+_dynamic_allowlist: set[str] = set()
+
+
+def _normalize_domain(raw: str) -> str:
+    """Lowercase, strip a scheme/path/whitespace and a leading dot."""
+    candidate = raw.strip().lower()
+    if "://" in candidate:
+        candidate = urlparse(candidate).hostname or ""
+    candidate = candidate.split("/")[0].split("?")[0]
+    return candidate.lstrip(".")
+
+
+async def load_dynamic_allowlist() -> None:
+    """Populate the in-memory set from the DB (call once, on bot startup)."""
+    from db.models import AllowedDomain
+
+    rows = await AllowedDomain.objects.all()
+    _dynamic_allowlist.clear()
+    _dynamic_allowlist.update(row.domain for row in rows)
+
+
+def get_effective_allowlist() -> list[str]:
+    """The static config.toml list plus every chat-added domain."""
+    return [*config.spam.link_domain_allowlist, *_dynamic_allowlist]
+
+
+async def add_allowed_domain(raw_domain: str, admin_id: int) -> bool:
+    """
+    Add a domain to the chat-editable allowlist.
+
+    Returns False if it's already allowed (static or dynamic) - True if it
+    was newly added. Raises ValueError for something that isn't a plausible
+    domain (empty, no dot).
+    """
+    from db.models import AllowedDomain
+
+    domain = _normalize_domain(raw_domain)
+    if not domain or "." not in domain:
+        raise ValueError(f"not a plausible domain: {raw_domain!r}")
+
+    static = {d.lower().lstrip(".") for d in config.spam.link_domain_allowlist}
+    if domain in static or domain in _dynamic_allowlist:
+        return False
+
+    await AllowedDomain.objects.create(domain=domain, added_by=admin_id)
+    _dynamic_allowlist.add(domain)
+    return True
+
+
+async def remove_allowed_domain(raw_domain: str) -> Optional[bool]:
+    """
+    Remove a domain from the chat-editable allowlist.
+
+    Returns True if removed, False if it wasn't allowed at all, or None if
+    it's only present in config.toml's static list - that one can't be
+    removed from chat, it needs an edit + restart.
+    """
+    from db.models import AllowedDomain
+
+    domain = _normalize_domain(raw_domain)
+    static = {d.lower().lstrip(".") for d in config.spam.link_domain_allowlist}
+
+    if domain in _dynamic_allowlist:
+        await AllowedDomain.objects.filter(domain=domain).delete()
+        _dynamic_allowlist.discard(domain)
+        return True
+
+    if domain in static:
+        return None
+
+    return False
 
 
 def is_moderation_exempt(member: MemberData) -> bool:

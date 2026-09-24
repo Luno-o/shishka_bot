@@ -50,12 +50,14 @@ from services.cache import (
     MemberData
 )
 from services.announcements import track_message
+from services.audit_log import record_deletion
 from services.ephemeral import cleanup_trigger, make_ephemeral
 from services.metrics import increment as record_metric
 from services.moderation_policy import (
     contains_chinese,
     contains_invisible_spacing,
     contains_link,
+    get_effective_allowlist,
     is_allowlisted_link_only,
     is_moderation_exempt,
     is_single_emoji,
@@ -712,6 +714,7 @@ async def on_user_message(message: Message) -> None:
                 reputation_points=-5
             )
             record_metric("spam_deleted_cn")
+            record_deletion(message.chat.id, user_id, "CN-спам", msg_text)
             log_msg = msg_text
             log_msg += f"\n\n<i>Автор:</i> {user_mention(message.from_user)}"
             await write_log(message.bot, log_msg, "🈲 Антиспам (CN)", message.chat.title)
@@ -727,6 +730,7 @@ async def on_user_message(message: Message) -> None:
                 reputation_points=-10
             )
             record_metric("spam_deleted_invisible_spacing")
+            record_deletion(message.chat.id, user_id, "невидимые символы", msg_text)
             log_msg = msg_text
             log_msg += f"\n\n<i>Автор:</i> {user_mention(message.from_user)}"
             await write_log(message.bot, log_msg, "👻 Антиспам (невидимые символы)", message.chat.title)
@@ -742,6 +746,7 @@ async def on_user_message(message: Message) -> None:
                 reputation_points=-5
             )
             record_metric("spam_deleted_single_emoji")
+            record_deletion(message.chat.id, user_id, "одинокий эмодзи", msg_text)
             await write_log(
                 message.bot,
                 f"{msg_text}\n\n<i>Автор:</i> {user_mention(message.from_user)}",
@@ -752,7 +757,7 @@ async def on_user_message(message: Message) -> None:
 
         if (member.reputation_points < config.spam.links_rep_threshold and
                 contains_link(message) and
-                not is_allowlisted_link_only(message, config.spam.link_domain_allowlist)):
+                not is_allowlisted_link_only(message, get_effective_allowlist())):
             await message.delete()
             await queue_member_update(
                 user_id,
@@ -760,6 +765,7 @@ async def on_user_message(message: Message) -> None:
                 reputation_points=-10
             )
             record_metric("spam_deleted_link")
+            record_deletion(message.chat.id, user_id, "ссылка", msg_text)
             await write_log(
                 message.bot,
                 f"{msg_text}\n\n<i>Автор:</i> {user_mention(message.from_user)}",
@@ -780,6 +786,7 @@ async def on_user_message(message: Message) -> None:
                 logger.info(f"🔍 Результат проверки спама: {is_spam} (тип: {type(is_spam)})")
                 if is_spam:
                     record_metric("spam_deleted_ml")
+                    record_deletion(message.chat.id, user_id, "ML-спам", msg_text)
                     await message.delete()
                     await queue_member_update(
                         user_id,
@@ -816,6 +823,7 @@ async def check_for_unwanted(message: Message, msg_text: str, member: MemberData
                 (message.date - message.reply_to_message.forward_date).seconds <= interval):
             try:
                 await message.delete()
+                record_deletion(message.chat.id, message.from_user.id, "первый коммент (антибот)", message.text)
                 await write_log(
                     message.bot,
                     f"Удалено сообщение: {message.text}\n\n<i>Автор:</i> {user_mention(message.from_user)}",
@@ -914,6 +922,7 @@ async def _report_nsfw(
 ) -> None:
     """Delete message and report to log channel with action buttons."""
     record_metric("nsfw_catches")
+    record_deletion(message.chat.id, message.from_user.id, log_label, msg_text)
     log_msg = msg_text or "[медиа без текста]"
     if extra_info:
         log_msg += f"\n\n{extra_info}"

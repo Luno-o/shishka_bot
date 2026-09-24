@@ -4,7 +4,25 @@ import pytest
 
 from config import config
 from services.cache import MemberData, flush_member_updates, members_cache, queue_member_update
-from services.moderation_policy import is_allowlisted_link_only, is_moderation_exempt
+from services.moderation_policy import (
+    add_allowed_domain,
+    get_effective_allowlist,
+    is_allowlisted_link_only,
+    is_moderation_exempt,
+    load_dynamic_allowlist,
+    remove_allowed_domain,
+)
+
+
+@pytest.fixture(autouse=True)
+def _reset_dynamic_allowlist():
+    """The dynamic allowlist is an in-memory module-level set, so unlike the
+    DB (cleared per-test by conftest's `database` fixture) it doesn't reset
+    itself between tests - do that here."""
+    from services import moderation_policy
+    moderation_policy._dynamic_allowlist.clear()
+    yield
+    moderation_policy._dynamic_allowlist.clear()
 
 
 def member_with_reputation(value: int, messages_count: int = 10) -> MemberData:
@@ -105,3 +123,52 @@ async def test_queued_update_changes_moderation_decision_immediately():
     assert is_moderation_exempt(member)
     members_cache.pop(member.user_id, None)
     await flush_member_updates()
+
+
+@pytest.mark.asyncio
+async def test_add_allowed_domain_extends_the_effective_list():
+    assert "example.com" not in get_effective_allowlist()
+
+    added = await add_allowed_domain("https://example.com/some/path", admin_id=1)
+    assert added is True
+    assert "example.com" in get_effective_allowlist()
+
+    # adding the same (normalized) domain again reports "already there"
+    added_again = await add_allowed_domain("EXAMPLE.COM", admin_id=1)
+    assert added_again is False
+
+
+@pytest.mark.asyncio
+async def test_add_allowed_domain_rejects_garbage():
+    with pytest.raises(ValueError):
+        await add_allowed_domain("not a domain", admin_id=1)
+
+
+@pytest.mark.asyncio
+async def test_remove_allowed_domain_distinguishes_static_from_dynamic():
+    await add_allowed_domain("chat-added.example", admin_id=1)
+
+    # a dynamically-added domain can be removed
+    assert await remove_allowed_domain("chat-added.example") is True
+    assert "chat-added.example" not in get_effective_allowlist()
+
+    # a domain that was never allowed at all
+    assert await remove_allowed_domain("never-added.example") is False
+
+    # a domain from the static config.toml list can't be removed from chat
+    static_domain = config.spam.link_domain_allowlist[0]
+    assert await remove_allowed_domain(static_domain) is None
+    assert static_domain in get_effective_allowlist()
+
+
+@pytest.mark.asyncio
+async def test_load_dynamic_allowlist_restores_from_db():
+    await add_allowed_domain("persisted.example", admin_id=42)
+
+    # simulate a restart: clear the in-memory cache, then reload from the DB
+    from services import moderation_policy
+    moderation_policy._dynamic_allowlist.clear()
+    assert "persisted.example" not in get_effective_allowlist()
+
+    await load_dynamic_allowlist()
+    assert "persisted.example" in get_effective_allowlist()

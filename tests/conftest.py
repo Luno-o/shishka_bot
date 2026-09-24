@@ -11,6 +11,7 @@ os.environ["DB_URL"] = f"sqlite+aiosqlite:///{TEST_DB_PATH}"
 from db import close_db, init_db  # noqa: E402
 from db.database import ormar_config  # noqa: E402
 from db.models import (  # noqa: E402
+    AllowedDomain,
     CatPhoto,
     Member,
     PendingNewcomer,
@@ -19,7 +20,7 @@ from db.models import (  # noqa: E402
     Warning,
 )
 
-MODELS = (PendingNewcomer, ShishTarotReading, CatPhoto, Spam, Member, Warning)
+MODELS = (PendingNewcomer, ShishTarotReading, CatPhoto, Spam, Member, Warning, AllowedDomain)
 
 
 @pytest.fixture(scope="session", autouse=True)

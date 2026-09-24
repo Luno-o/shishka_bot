@@ -10,7 +10,10 @@ from aiogram.types import ChatPermissions, Message
 from config import config
 from db.models import Member
 from filters import MemberCanRestrictFilter, InMainGroups, IsOwnerFilter
+from services.audit_log import get_recent
+from services.cache import get_member_orm, update_member_cache
 from services.ephemeral import cleanup_trigger, make_ephemeral
+from services.moderation_policy import add_allowed_domain, get_effective_allowlist, remove_allowed_domain
 from services.raid_guard import clear_raid, is_raid_active
 from services.metrics import increment as record_metric
 from services.warn_service import add_warning, clear_warnings, consequence_for, count_warnings, remove_latest_warning
@@ -248,6 +251,38 @@ async def cmd_clear_warns(message: Message) -> None:
         await message.reply(f"У {user_mention_by_id(target.id)} и так нет предупреждений в этом чате.")
 
 
+@router.message(
+    InMainGroups(),
+    MemberCanRestrictFilter(),
+    Command("adminhelp", "хелп_админ", prefix="!/")
+)
+async def cmd_admin_help(message: Message) -> None:
+    """List the moderation/admin commands in-chat (admin only) - the same
+    set documented in README.md, kept here so admins don't need to go
+    looking for the file."""
+    text = (
+        "🛡️ <b>Команды модерации</b>\n\n"
+        "<b>Пользователи</b>\n"
+        "!ban / !unban — забанить / разбанить (ответом на сообщение)\n"
+        "!warn [причина] — выдать предупреждение (ответом); копится и эскалирует до мута/бана\n"
+        "!warns — посмотреть предупреждения (ответом — чужие, без ответа — свои)\n"
+        "!unwarn — снять последнее предупреждение (ответом)\n"
+        "!clearwarns — сбросить все предупреждения (ответом)\n"
+        "!trust — быстрый фикс ложного срабатывания: поднять репутацию, сбросить спам-нарушения, снять мут (ответом)\n\n"
+        "<b>Ссылки</b>\n"
+        "!linkallow [домен] — добавить домен в белый список; без аргумента — показать список\n"
+        "!linkdeny домен — убрать домен из белого списка\n\n"
+        "<b>Антирейд</b>\n"
+        "!raid_off — снять режим антирейда в этом чате\n\n"
+        "<b>Диагностика</b>\n"
+        "!falsepositives [N] — последние автоудаления модерацией в этом чате\n\n"
+        "<i>Только для владельца бота:</i>\n"
+        "!backup_now, !metrics, !reload, !top_violators_spam [N], !top_violators_profanity [N], "
+        "!msg, !log, !chatid"
+    )
+    await message.reply(text)
+
+
 def _parse_count(command: CommandObject, default: int = 10, max_val: int = 50) -> int:
     """Parse count argument from command, with bounds."""
     if not command.args:
@@ -322,6 +357,137 @@ async def cmd_top_violators_spam(message: Message, command: CommandObject) -> No
         lines.append(
             f"{i}. {user_mention_by_id(member.user_id)} — "
             f"<b>{member.violations_count_spam}</b> нарушений"
+        )
+
+    await message.reply("\n".join(lines))
+
+
+@router.message(
+    InMainGroups(),
+    MemberCanRestrictFilter(),
+    Command("trust", "доверие", prefix="!/")
+)
+async def cmd_trust(message: Message) -> None:
+    """
+    Quick manual fix for a false positive (reply to the user's message,
+    admin only): raises their reputation just above the exemption
+    threshold, clears their spam-violation count, and lifts any active
+    mute in this chat. Doesn't touch !warn warnings - use !unwarn/!clearwarns
+    for those.
+    """
+    if not message.reply_to_message:
+        await message.reply(get_string("error_no_reply"))
+        return
+
+    target = message.reply_to_message.from_user
+
+    member = await get_member_orm(target.id)
+    new_reputation = max(member.reputation_points, config.spam.exempt_reputation_threshold + 1)
+    await member.update(reputation_points=new_reputation, violations_count_spam=0)
+    update_member_cache(target.id, member)
+
+    try:
+        await message.bot.restrict_chat_member(
+            chat_id=message.chat.id,
+            user_id=target.id,
+            permissions=ChatPermissions(can_send_messages=True),
+        )
+    except Exception:
+        pass  # user wasn't restricted, or bot lacks rights - either way, not fatal
+
+    await message.reply(
+        f"✅ {user_mention_by_id(target.id)} помечен как доверенный: "
+        f"репутация поднята до <b>{new_reputation}</b>, счётчик спам-нарушений сброшен, "
+        f"мут (если был) снят."
+    )
+
+
+@router.message(
+    InMainGroups(),
+    MemberCanRestrictFilter(),
+    Command("linkallow", prefix="!/")
+)
+async def cmd_linkallow(message: Message, command: CommandObject) -> None:
+    """
+    Add a domain to the link allowlist without touching config.toml or
+    restarting the bot (admin only). No argument -> show the current list.
+
+    Usage: !linkallow example.com
+    """
+    if not command.args:
+        domains = sorted(get_effective_allowlist())
+        text = "🔗 <b>Разрешённые домены:</b>\n" + (", ".join(domains) if domains else "список пуст.")
+        await message.reply(text)
+        return
+
+    domain = command.args.strip()
+    try:
+        added = await add_allowed_domain(domain, message.from_user.id)
+    except ValueError:
+        await message.reply("❌ Похоже на некорректный домен. Пример: <code>!linkallow example.com</code>")
+        return
+
+    if added:
+        await message.reply(f"✅ Домен <code>{domain}</code> добавлен в белый список ссылок.")
+    else:
+        await message.reply(f"ℹ️ Домен <code>{domain}</code> уже в белом списке.")
+
+
+@router.message(
+    InMainGroups(),
+    MemberCanRestrictFilter(),
+    Command("linkdeny", prefix="!/")
+)
+async def cmd_linkdeny(message: Message, command: CommandObject) -> None:
+    """
+    Remove a chat-added domain from the link allowlist (admin only).
+
+    Usage: !linkdeny example.com
+    """
+    if not command.args:
+        await message.reply("Использование: <code>!linkdeny example.com</code>")
+        return
+
+    domain = command.args.strip()
+    result = await remove_allowed_domain(domain)
+
+    if result is True:
+        await message.reply(f"✅ Домен <code>{domain}</code> убран из белого списка.")
+    elif result is None:
+        await message.reply(
+            f"⚠️ Домен <code>{domain}</code> задан в config.toml ([spam].link_domain_allowlist) - "
+            f"из чата его не убрать, нужно поправить файл и перезапустить бота."
+        )
+    else:
+        await message.reply(f"ℹ️ Домена <code>{domain}</code> и так нет в белом списке.")
+
+
+@router.message(
+    InMainGroups(),
+    MemberCanRestrictFilter(),
+    Command("falsepositives", "лп", prefix="!/")
+)
+async def cmd_false_positives(message: Message, command: CommandObject) -> None:
+    """
+    Show the last few messages auto-deleted by moderation in this chat, so
+    admins can spot false positives without digging through the logs
+    channel (admin only).
+
+    Usage: !falsepositives [count]  (default 10, max 30)
+    """
+    count = _parse_count(command, default=10, max_val=30)
+    entries = get_recent(message.chat.id, limit=count)
+
+    if not entries:
+        await message.reply("🕵️ Пока нет недавних автоудалений в этом чате.")
+        return
+
+    lines = [f"🕵️ <b>Последние {len(entries)} автоудалений в этом чате:</b>\n"]
+    for entry in entries:
+        stamp = entry.at.strftime("%d.%m %H:%M")
+        lines.append(
+            f"• {stamp} — <i>{entry.reason}</i> — {user_mention_by_id(entry.user_id)}: "
+            f"«{entry.snippet}»"
         )
 
     await message.reply("\n".join(lines))
