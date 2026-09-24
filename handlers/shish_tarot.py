@@ -24,7 +24,7 @@ async def send_daily_shishka(message: Message) -> None:
             await message.answer("🔮 В колоде пока нет Шишек. Попросите администратора добавить фото.")
             return
 
-        caption = "🔮 <b>Твоя Шишка дня</b>\nЭта судьба закреплена за тобой до завтра."
+        caption = "🔮 <b>Твоя Шишка дня</b>"
         if media.description:
             caption += f"\n\n{escape(media.description)}"
 
