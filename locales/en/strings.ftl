@@ -335,12 +335,18 @@ help-message =
     /help — open this guide
     /rules — read the chat rules
     /me — view your statistics and reputation
+    /top — chat reputation leaderboard
     /report — report a message by replying to it
 
     🌲 <b>Just for fun</b>
     /shishka — get a random Shishka
+    /shis_friends — get a photo of one of Shishka's cat friends 🐾
     /shish_tarot — reveal your Shishka of the day 🔮
     /бу — try to scare the bot
+
+    📸 <b>Submit your own photos</b>
+    /submit_shishka — suggest a Shishka photo for moderation
+    /submit_shis_friend — suggest a cat-friend photo for moderation
 
 # === SHORT WELCOMES ===
 welcome-short = 👋 Hello, { $username }! Welcome to the chat! :3

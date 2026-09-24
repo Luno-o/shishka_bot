@@ -4,5 +4,6 @@ from .cat_photo import CatPhoto
 from .shish_tarot_reading import ShishTarotReading
 from .pending_newcomer import PendingNewcomer
 from .warning import Warning
+from .allowed_domain import AllowedDomain
 
-__all__ = ["Member", "Spam", "CatPhoto", "ShishTarotReading", "PendingNewcomer", "Warning"]
+__all__ = ["Member", "Spam", "CatPhoto", "ShishTarotReading", "PendingNewcomer", "Warning", "AllowedDomain"]

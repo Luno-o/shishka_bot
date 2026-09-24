@@ -38,3 +38,21 @@ def snapshot() -> dict:
 def reset() -> None:
     """Clear all counters (useful for tests)."""
     _counters.clear()
+
+
+def to_prometheus_text() -> str:
+    """
+    Same counters as snapshot(), rendered as Prometheus text exposition
+    format (for a Grafana/Prometheus scrape instead of the plain-JSON
+    /metrics - see /metrics/prometheus in services/healthcheck.py).
+    """
+    lines = [
+        "# HELP shishka_bot_uptime_seconds Seconds since the bot process started.",
+        "# TYPE shishka_bot_uptime_seconds gauge",
+        f"shishka_bot_uptime_seconds {get_uptime_seconds():.1f}",
+        "# HELP shishka_bot_events_total Named event counters (messages, spam, bans, warnings, ...).",
+        "# TYPE shishka_bot_events_total counter",
+    ]
+    for name, value in get_counters().items():
+        lines.append(f'shishka_bot_events_total{{name="{name}"}} {value}')
+    return "\n".join(lines) + "\n"

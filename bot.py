@@ -26,6 +26,7 @@ from services.announcements import set_bot as set_announcements_bot
 from services.backup import run_backup_scheduler
 from services.cache import flush_member_updates, start_batch_flush_task, stop_batch_flush_task
 from services.healthcheck import get_health_server, start_health_server, stop_health_server
+from services.moderation_policy import load_dynamic_allowlist
 from services.newcomer_guard import start_newcomer_checks, stop_newcomer_checks
 
 # Configure logging
@@ -52,6 +53,9 @@ async def on_startup(bot: Bot) -> None:
     # Initialize database
     await init_db()
     logger.info("Database connected")
+
+    await load_dynamic_allowlist()
+    logger.info("Dynamic link allowlist loaded")
 
     await start_newcomer_checks(bot)
     logger.info("Newcomer checks restored")

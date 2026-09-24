@@ -39,6 +39,7 @@ class HealthCheckServer:
         self.app.router.add_get("/health", self._health_handler)
         self.app.router.add_get("/ready", self._ready_handler)
         self.app.router.add_get("/metrics", self._metrics_handler)
+        self.app.router.add_get("/metrics/prometheus", self._metrics_prometheus_handler)
         self.app.router.add_get("/", self._health_handler)
     
     async def _health_handler(self, request: web.Request) -> web.Response:
@@ -71,6 +72,10 @@ class HealthCheckServer:
         a script or a dashboard without extra dependencies.
         """
         return web.json_response(metrics.snapshot())
+
+    async def _metrics_prometheus_handler(self, request: web.Request) -> web.Response:
+        """Same counters as /metrics, in Prometheus text exposition format."""
+        return web.Response(text=metrics.to_prometheus_text(), content_type="text/plain")
 
     def set_ready(self, ready: bool = True) -> None:
         """Set the readiness status."""
