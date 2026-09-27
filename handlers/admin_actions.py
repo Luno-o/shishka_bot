@@ -387,10 +387,32 @@ async def cmd_trust(message: Message) -> None:
     update_member_cache(target.id, member)
 
     try:
+        # IMPORTANT: restrictChatMember replaces the user's ENTIRE permission
+        # set with exactly what's passed here - any field left unset is
+        # applied as False, not "leave unchanged". ChatPermissions(can_send_messages=True)
+        # alone would "unmute" text but permanently strip media/polls/stickers/
+        # forwards for this user (Telegram then shows them a native "admins
+        # restricted you" error on every photo/forward, forever, since there's
+        # no until_date to auto-expire it). So we fetch the chat's own current
+        # default permissions and restore exactly those - a real "back to
+        # normal member", not a partial unmute.
+        chat = await message.bot.get_chat(message.chat.id)
+        restored_permissions = chat.permissions or ChatPermissions(
+            can_send_messages=True,
+            can_send_audios=True,
+            can_send_documents=True,
+            can_send_photos=True,
+            can_send_videos=True,
+            can_send_video_notes=True,
+            can_send_voice_notes=True,
+            can_send_polls=True,
+            can_send_other_messages=True,
+            can_add_web_page_previews=True,
+        )
         await message.bot.restrict_chat_member(
             chat_id=message.chat.id,
             user_id=target.id,
-            permissions=ChatPermissions(can_send_messages=True),
+            permissions=restored_permissions,
         )
     except Exception:
         pass  # user wasn't restricted, or bot lacks rights - either way, not fatal
