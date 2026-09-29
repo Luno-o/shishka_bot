@@ -9,7 +9,7 @@ from aiogram.types import ChatPermissions, Message
 
 from config import config
 from db.models import Member
-from filters import MemberCanRestrictFilter, InMainGroups, IsOwnerFilter
+from filters import IsAdminFilter, InMainGroups, IsOwnerFilter
 from services.audit_log import get_recent
 from services.cache import get_member_orm, update_member_cache
 from services.ephemeral import cleanup_trigger, make_ephemeral
@@ -55,7 +55,7 @@ async def cmd_top(message: Message, command: CommandObject) -> None:
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("ban", prefix="!/")
 )
 async def cmd_ban(message: Message) -> None:
@@ -87,7 +87,7 @@ async def cmd_ban(message: Message) -> None:
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("unban", prefix="!/")
 )
 async def cmd_unban(message: Message) -> None:
@@ -119,7 +119,7 @@ async def cmd_unban(message: Message) -> None:
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("raid_off", "антирейд_выкл", prefix="!/")
 )
 async def cmd_raid_off(message: Message) -> None:
@@ -144,7 +144,7 @@ _CONSEQUENCE_LABELS = {
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("warn", "варн", "предупреждение", prefix="!/")
 )
 async def cmd_warn(message: Message, command: CommandObject) -> None:
@@ -214,7 +214,7 @@ async def cmd_warns(message: Message) -> None:
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("unwarn", prefix="!/")
 )
 async def cmd_unwarn(message: Message) -> None:
@@ -234,7 +234,7 @@ async def cmd_unwarn(message: Message) -> None:
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("clearwarns", prefix="!/")
 )
 async def cmd_clear_warns(message: Message) -> None:
@@ -253,7 +253,7 @@ async def cmd_clear_warns(message: Message) -> None:
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("adminhelp", "хелп_админ", prefix="!/")
 )
 async def cmd_admin_help(message: Message) -> None:
@@ -364,7 +364,7 @@ async def cmd_top_violators_spam(message: Message, command: CommandObject) -> No
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("trust", "доверие", prefix="!/")
 )
 async def cmd_trust(message: Message) -> None:
@@ -387,10 +387,32 @@ async def cmd_trust(message: Message) -> None:
     update_member_cache(target.id, member)
 
     try:
+        # IMPORTANT: restrictChatMember replaces the user's ENTIRE permission
+        # set with exactly what's passed here - any field left unset is
+        # applied as False, not "leave unchanged". ChatPermissions(can_send_messages=True)
+        # alone would "unmute" text but permanently strip media/polls/stickers/
+        # forwards for this user (Telegram then shows them a native "admins
+        # restricted you" error on every photo/forward, forever, since there's
+        # no until_date to auto-expire it). So we fetch the chat's own current
+        # default permissions and restore exactly those - a real "back to
+        # normal member", not a partial unmute.
+        chat = await message.bot.get_chat(message.chat.id)
+        restored_permissions = chat.permissions or ChatPermissions(
+            can_send_messages=True,
+            can_send_audios=True,
+            can_send_documents=True,
+            can_send_photos=True,
+            can_send_videos=True,
+            can_send_video_notes=True,
+            can_send_voice_notes=True,
+            can_send_polls=True,
+            can_send_other_messages=True,
+            can_add_web_page_previews=True,
+        )
         await message.bot.restrict_chat_member(
             chat_id=message.chat.id,
             user_id=target.id,
-            permissions=ChatPermissions(can_send_messages=True),
+            permissions=restored_permissions,
         )
     except Exception:
         pass  # user wasn't restricted, or bot lacks rights - either way, not fatal
@@ -404,7 +426,7 @@ async def cmd_trust(message: Message) -> None:
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("linkallow", prefix="!/")
 )
 async def cmd_linkallow(message: Message, command: CommandObject) -> None:
@@ -435,7 +457,7 @@ async def cmd_linkallow(message: Message, command: CommandObject) -> None:
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("linkdeny", prefix="!/")
 )
 async def cmd_linkdeny(message: Message, command: CommandObject) -> None:
@@ -464,7 +486,7 @@ async def cmd_linkdeny(message: Message, command: CommandObject) -> None:
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("falsepositives", "лп", prefix="!/")
 )
 async def cmd_false_positives(message: Message, command: CommandObject) -> None:
