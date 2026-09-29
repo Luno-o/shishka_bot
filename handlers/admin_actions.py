@@ -9,7 +9,7 @@ from aiogram.types import ChatPermissions, Message
 
 from config import config
 from db.models import Member
-from filters import MemberCanRestrictFilter, InMainGroups, IsOwnerFilter
+from filters import IsAdminFilter, InMainGroups, IsOwnerFilter
 from services.audit_log import get_recent
 from services.cache import get_member_orm, update_member_cache
 from services.ephemeral import cleanup_trigger, make_ephemeral
@@ -55,7 +55,7 @@ async def cmd_top(message: Message, command: CommandObject) -> None:
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("ban", prefix="!/")
 )
 async def cmd_ban(message: Message) -> None:
@@ -87,7 +87,7 @@ async def cmd_ban(message: Message) -> None:
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("unban", prefix="!/")
 )
 async def cmd_unban(message: Message) -> None:
@@ -119,7 +119,7 @@ async def cmd_unban(message: Message) -> None:
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("raid_off", "антирейд_выкл", prefix="!/")
 )
 async def cmd_raid_off(message: Message) -> None:
@@ -144,7 +144,7 @@ _CONSEQUENCE_LABELS = {
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("warn", "варн", "предупреждение", prefix="!/")
 )
 async def cmd_warn(message: Message, command: CommandObject) -> None:
@@ -214,7 +214,7 @@ async def cmd_warns(message: Message) -> None:
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("unwarn", prefix="!/")
 )
 async def cmd_unwarn(message: Message) -> None:
@@ -234,7 +234,7 @@ async def cmd_unwarn(message: Message) -> None:
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("clearwarns", prefix="!/")
 )
 async def cmd_clear_warns(message: Message) -> None:
@@ -253,7 +253,7 @@ async def cmd_clear_warns(message: Message) -> None:
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("adminhelp", "хелп_админ", prefix="!/")
 )
 async def cmd_admin_help(message: Message) -> None:
@@ -364,7 +364,7 @@ async def cmd_top_violators_spam(message: Message, command: CommandObject) -> No
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("trust", "доверие", prefix="!/")
 )
 async def cmd_trust(message: Message) -> None:
@@ -426,7 +426,7 @@ async def cmd_trust(message: Message) -> None:
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("linkallow", prefix="!/")
 )
 async def cmd_linkallow(message: Message, command: CommandObject) -> None:
@@ -457,7 +457,7 @@ async def cmd_linkallow(message: Message, command: CommandObject) -> None:
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("linkdeny", prefix="!/")
 )
 async def cmd_linkdeny(message: Message, command: CommandObject) -> None:
@@ -486,7 +486,7 @@ async def cmd_linkdeny(message: Message, command: CommandObject) -> None:
 
 @router.message(
     InMainGroups(),
-    MemberCanRestrictFilter(),
+    IsAdminFilter(),
     Command("falsepositives", "лп", prefix="!/")
 )
 async def cmd_false_positives(message: Message, command: CommandObject) -> None:
