@@ -30,7 +30,7 @@ from PIL import Image
 import numpy as np
 
 from config import config
-from filters import IsOwnerFilter, InMainGroups, ThrottleFilter
+from filters import IsAdminFilter, InMainGroups, ThrottleFilter
 from db.models import CatPhoto, Spam
 from services.gender import Gender
 from services.spam import predict_async as ruspam_predict
@@ -189,15 +189,15 @@ async def on_me(message: Message) -> None:
     await cleanup_trigger(message)
 
 
-### OWNER COMMANDS ###
+### REPUTATION / MODERATION COMMANDS (ADMIN) ###
 
 @router.message(
     InMainGroups(),
-    IsOwnerFilter(),
+    IsAdminFilter(),
     Command("spam", prefix="!")
 )
 async def on_spam(message: Message) -> None:
-    """Mark a message as spam (owner only)."""
+    """Mark a message as spam (admin only)."""
     if not message.reply_to_message:
         await message.reply("Чего ты от меня хочешь :3")
         return
@@ -255,9 +255,9 @@ async def on_spam(message: Message) -> None:
         await message.reply("O_o Мда")
 
 
-@router.message(InMainGroups(), IsOwnerFilter(), Command("setlvl", prefix="!"))
+@router.message(InMainGroups(), IsAdminFilter(), Command("setlvl", prefix="!"))
 async def on_setlvl(message: Message) -> None:
-    """Set user level (owner only)."""
+    """Set user level (admin only)."""
     if not message.reply_to_message:
         await message.reply("Чего ты от меня хочешь :3")
         return
@@ -277,9 +277,9 @@ async def on_setlvl(message: Message) -> None:
         await message.reply("O_o Мда")
 
 
-@router.message(InMainGroups(), IsOwnerFilter(), Command("reward", prefix="!"))
+@router.message(InMainGroups(), IsAdminFilter(), Command("reward", prefix="!"))
 async def on_reward(message: Message) -> None:
-    """Reward reputation points (owner only)."""
+    """Reward reputation points (admin only)."""
     if not message.reply_to_message:
         await message.reply("Чего ты от меня хочешь :3")
         return
@@ -297,9 +297,9 @@ async def on_reward(message: Message) -> None:
         await message.reply(f"➕ Участник чата получает <i><b>{points}</b> очков репутации.</i>")
 
 
-@router.message(InMainGroups(), IsOwnerFilter(), Command("rreset", prefix="!"))
+@router.message(InMainGroups(), IsAdminFilter(), Command("rreset", prefix="!"))
 async def on_rep_reset(message: Message) -> None:
-    """Reset user reputation (owner only)."""
+    """Reset user reputation (admin only)."""
     if not message.reply_to_message:
         await message.reply("Чего ты от меня хочешь :3")
         return
@@ -314,9 +314,9 @@ async def on_rep_reset(message: Message) -> None:
         await message.reply("O_o Мда")
 
 
-@router.message(InMainGroups(), IsOwnerFilter(), Command("punish", prefix="!"))
+@router.message(InMainGroups(), IsAdminFilter(), Command("punish", prefix="!"))
 async def on_punish(message: Message) -> None:
-    """Punish user - remove reputation (owner only)."""
+    """Punish user - remove reputation (admin only)."""
     if not message.reply_to_message:
         await message.reply("Чего ты от меня хочешь :3")
         return

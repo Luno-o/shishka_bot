@@ -337,6 +337,7 @@ help-message =
     /me — view your statistics and reputation
     /top — chat reputation leaderboard
     /report — report a message by replying to it
+    /warns — check your own warnings (or someone else's, by replying)
 
     🌲 <b>Just for fun</b>
     /shishka — get a random Shishka
@@ -347,6 +348,8 @@ help-message =
     📸 <b>Submit your own photos</b>
     /submit_shishka — suggest a Shishka photo for moderation
     /submit_shis_friend — suggest a cat-friend photo for moderation
+
+    🛡️ Admins: full moderation command list — /adminhelp
 
 # === SHORT WELCOMES ===
 welcome-short = 👋 Hello, { $username }! Welcome to the chat! :3
