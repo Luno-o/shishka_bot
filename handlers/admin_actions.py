@@ -1,26 +1,31 @@
 """
 Admin action handlers (ban, unban, etc.).
 """
+import logging
 from datetime import datetime, timedelta, timezone
+from html import escape
 
 from aiogram import Router
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command, CommandObject
 from aiogram.types import ChatPermissions, Message
 
 from config import config
 from db.models import Member
 from filters import IsAdminFilter, InMainGroups, IsOwnerFilter
-from services.admin_identity import actor_id
+from services.admin_identity import actor_id, is_admin_sender
 from services.audit_log import get_recent
 from services.cache import get_member_orm, update_member_cache
-from services.ephemeral import cleanup_trigger, make_ephemeral
+from services.ephemeral import cleanup_trigger, delete_silently, make_ephemeral, schedule_delete
 from services.moderation_policy import add_allowed_domain, get_effective_allowlist, remove_allowed_domain
 from services.raid_guard import clear_raid, is_raid_active
 from services.metrics import increment as record_metric
 from services.warn_service import add_warning, clear_warnings, consequence_for, count_warnings, remove_latest_warning
 from utils import get_string, MemberStatus, user_mention_by_id
+from utils.text_split import MESSAGE_LIMIT, split_paragraphs
 
 router = Router(name="admin_actions")
+logger = logging.getLogger(__name__)
 
 
 _MEDALS = {1: "🥇", 2: "🥈", 3: "🥉"}
@@ -252,42 +257,89 @@ async def cmd_clear_warns(message: Message) -> None:
         await message.reply(f"У {user_mention_by_id(target.id)} и так нет предупреждений в этом чате.")
 
 
+_ADMIN_HELP_TEXT = (
+    "🛡️ <b>Команды модерации</b>\n\n"
+    "<b>Пользователи</b>\n"
+    "!ban / !unban — забанить / разбанить (ответом на сообщение)\n"
+    "!warn [причина] — выдать предупреждение (ответом); копится и эскалирует до мута/бана\n"
+    "!warns — посмотреть предупреждения (ответом — чужие, без ответа — свои)\n"
+    "!unwarn — снять последнее предупреждение (ответом)\n"
+    "!clearwarns — сбросить все предупреждения (ответом)\n"
+    "!trust — быстрый фикс ложного срабатывания: поднять репутацию, сбросить спам-нарушения, снять мут (ответом)\n\n"
+    "<b>Репутация</b>\n"
+    "!reward [очки] — начислить очки репутации (ответом)\n"
+    "!punish [очки] — снять очки репутации (ответом)\n"
+    "!setlvl [уровень] — выставить уровень (кол-во сообщений) участнику (ответом)\n"
+    "!rreset — сбросить репутацию участника до базовой (ответом)\n"
+    "!spam — пометить сообщение как спам и отправить на разбор в лог-канал (ответом)\n\n"
+    "<b>Ссылки</b>\n"
+    "!linkallow [домен] — добавить домен в белый список; без аргумента — показать список\n"
+    "!linkdeny домен — убрать домен из белого списка\n\n"
+    "<b>Антирейд</b>\n"
+    "!raid_off — снять режим антирейда в этом чате\n\n"
+    "<b>Диагностика</b>\n"
+    "!falsepositives [N] — последние автоудаления модерацией в этом чате\n"
+    "Каждое автоудаление, автобан и удаление новичка приходит в лог-чат "
+    "со строкой «Правило: …» — по какому правилу и с каким порогом сработала модерация\n\n"
+    "<b>Анонимные админы</b>\n"
+    "Команды работают и от имени группы (анонимный админ), и от имени связанного канала "
+    "(linked_channels в config.toml). Такие сообщения не трогает автомодерация. "
+    "От имени любого другого канала админские команды не работают\n\n"
+    "<b>Эта справка</b>\n"
+    "Приходит в личку (сначала напишите боту /start), а анонимным админам и при закрытой "
+    "личке — в лог-чат. Команда в чате удаляется сразу, справка — через пару минут\n\n"
+    "<i>Только для владельца бота:</i>\n"
+    "!backup_now, !metrics, !reload, !top_violators_spam [N], !top_violators_profanity [N], "
+    "!msg, !log, !chatid"
+)
+
+
+def admin_help_chunks() -> list[str]:
+    """Return the admin help split into Telegram-sized messages."""
+    return split_paragraphs(_ADMIN_HELP_TEXT, MESSAGE_LIMIT)
+
+
+async def _send_expiring(message: Message, chat_id: int, chunks: list[str]) -> None:
+    """Send ``chunks`` to ``chat_id`` and schedule their deletion."""
+    for chunk in chunks:
+        sent = await message.bot.send_message(chat_id, chunk)
+        schedule_delete(message.bot, sent.chat.id, sent.message_id, config.ephemeral.admin_help_ttl)
+
+
 @router.message(
     InMainGroups(),
-    IsAdminFilter(),
     Command("adminhelp", "хелп_админ", prefix="!/")
 )
 async def cmd_admin_help(message: Message) -> None:
-    """List the moderation/admin commands in-chat (admin only) - the same
-    set documented in README.md, kept here so admins don't need to go
-    looking for the file."""
-    text = (
-        "🛡️ <b>Команды модерации</b>\n\n"
-        "<b>Пользователи</b>\n"
-        "!ban / !unban — забанить / разбанить (ответом на сообщение)\n"
-        "!warn [причина] — выдать предупреждение (ответом); копится и эскалирует до мута/бана\n"
-        "!warns — посмотреть предупреждения (ответом — чужие, без ответа — свои)\n"
-        "!unwarn — снять последнее предупреждение (ответом)\n"
-        "!clearwarns — сбросить все предупреждения (ответом)\n"
-        "!trust — быстрый фикс ложного срабатывания: поднять репутацию, сбросить спам-нарушения, снять мут (ответом)\n\n"
-        "<b>Репутация</b>\n"
-        "!reward [очки] — начислить очки репутации (ответом)\n"
-        "!punish [очки] — снять очки репутации (ответом)\n"
-        "!setlvl [уровень] — выставить уровень (кол-во сообщений) участнику (ответом)\n"
-        "!rreset — сбросить репутацию участника до базовой (ответом)\n"
-        "!spam — пометить сообщение как спам и отправить на разбор в лог-канал (ответом)\n\n"
-        "<b>Ссылки</b>\n"
-        "!linkallow [домен] — добавить домен в белый список; без аргумента — показать список\n"
-        "!linkdeny домен — убрать домен из белого списка\n\n"
-        "<b>Антирейд</b>\n"
-        "!raid_off — снять режим антирейда в этом чате\n\n"
-        "<b>Диагностика</b>\n"
-        "!falsepositives [N] — последние автоудаления модерацией в этом чате\n\n"
-        "<i>Только для владельца бота:</i>\n"
-        "!backup_now, !metrics, !reload, !top_violators_spam [N], !top_violators_profanity [N], "
-        "!msg, !log, !chatid"
-    )
-    await message.reply(text)
+    """Deliver the admin command list privately; nothing stays in the group.
+
+    The trigger is deleted for everyone. Non-admins get no answer. Admins get
+    the list in a private chat; chat/channel senders (no personal account) or
+    admins whose private chat is closed get it in the logs chat. Every help
+    message expires after config.ephemeral.admin_help_ttl.
+    """
+    # Why: the admin command list must not be visible to members, not even as
+    # the command itself, so no IsAdminFilter here - non-admin calls are wiped too.
+    await delete_silently(message)
+    if not await is_admin_sender(message):
+        return
+
+    chunks = admin_help_chunks()
+    if message.sender_chat is None:
+        try:
+            await _send_expiring(message, message.from_user.id, chunks)
+            return
+        except (TelegramForbiddenError, TelegramBadRequest) as err:
+            logger.info("Admin help DM to %s failed: %s", message.from_user.id, err)
+
+    if not config.groups.logs:
+        logger.warning("Admin help requested in %s but no logs chat is configured", message.chat.id)
+        return
+    header = f"🛡️ Справка по запросу из <b>{escape(message.chat.title or str(message.chat.id))}</b>"
+    try:
+        await _send_expiring(message, config.groups.logs, [header, *chunks])
+    except (TelegramForbiddenError, TelegramBadRequest) as err:
+        logger.warning("Admin help to logs chat failed: %s", err)
 
 
 def _parse_count(command: CommandObject, default: int = 10, max_val: int = 50) -> int:

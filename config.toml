@@ -167,6 +167,8 @@ delete_trigger = true
 help_ttl = 45
 rules_ttl = 60
 stats_ttl = 30
+# admin help (sent privately or to the logs chat)
+admin_help_ttl = 180
 
 
 [backup]
