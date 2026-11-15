@@ -984,7 +984,12 @@ async def _report_nsfw(
         )]
     ])
 
-    await message.delete()
+    try:
+        await message.delete()
+    except TelegramBadRequest as err:
+        # Why: the report with the "NSFW + ban" keyboard is the admins' only way
+        # to act on a message we failed to delete, so it must still be sent.
+        logger.warning("Could not delete NSFW message %s: %s", message.message_id, err)
     await log_auto_action(
         message,
         rule=rule,
