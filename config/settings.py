@@ -129,6 +129,8 @@ class EphemeralConfig(BaseModel):
     help_ttl: int = 45
     rules_ttl: int = 60
     stats_ttl: int = 30
+    # admin help lives in a private chat / logs chat, long enough to read the list
+    admin_help_ttl: int = 180
 
 
 class BackupConfig(BaseModel):

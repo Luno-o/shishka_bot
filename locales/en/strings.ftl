@@ -349,7 +349,8 @@ help-message =
     /submit_shishka — suggest a Shishka photo for moderation
     /submit_shis_friend — suggest a cat-friend photo for moderation
 
-    🛡️ Admins: full moderation command list — /adminhelp
+    🤖 <b>Auto-moderation</b>
+    For newcomers the bot deletes spam, links and media on its own. Wrongly deleted? Message an admin: they can see which rule fired.
 
 # === SHORT WELCOMES ===
 welcome-short = 👋 Hello, { $username }! Welcome to the chat! :3

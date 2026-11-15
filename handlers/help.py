@@ -12,6 +12,7 @@ from db.models import CatPhoto
 from filters import HelpRequestFilter
 from services.ephemeral import cleanup_trigger, make_ephemeral
 from utils import get_string
+from utils.text_split import CAPTION_LIMIT, MESSAGE_LIMIT, split_paragraphs, visible_length
 
 router = Router(name="help")
 logger = logging.getLogger(__name__)
@@ -23,21 +24,28 @@ async def send_help(message: Message) -> None:
     Ephemeral in groups: the reply auto-deletes after config.ephemeral.help_ttl.
     """
     help_text = get_string("help-message")
-    sent = None
+    ttl = config.ephemeral.help_ttl
+    # Why: a caption over Telegram's limit is rejected outright, so a long help
+    # goes as the media alone followed by the text, never squeezed into one.
+    fits_caption = visible_length(help_text) <= CAPTION_LIMIT
+
     try:
         media_list = await CatPhoto.objects.all()
         media = random.choice(media_list) if media_list else None
-        if media is None:
-            sent = await message.answer(help_text)
-        elif media.media_type == "animation":
-            sent = await message.answer_animation(media.file_id, caption=help_text)
-        else:
-            sent = await message.answer_photo(media.file_id, caption=help_text)
+        if media is not None:
+            caption = help_text if fits_caption else None
+            if media.media_type == "animation":
+                sent = await message.answer_animation(media.file_id, caption=caption)
+            else:
+                sent = await message.answer_photo(media.file_id, caption=caption)
+            make_ephemeral(message, sent, ttl)
+            if fits_caption:
+                return
     except Exception:
         logger.exception("Failed to attach a random Shishka to help")
-        sent = await message.answer(help_text)
 
-    make_ephemeral(message, sent, config.ephemeral.help_ttl)
+    for chunk in split_paragraphs(help_text, MESSAGE_LIMIT):
+        make_ephemeral(message, await message.answer(chunk), ttl)
 
 
 async def send_rules(message: Message) -> None:
