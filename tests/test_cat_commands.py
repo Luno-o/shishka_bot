@@ -223,3 +223,23 @@ async def test_reports_chat_failure_falls_back_to_logs(submit_env, monkeypatch):
 
     assert targets == [-555, -777]
     assert "отправлено на модерацию" in msg.answer.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_migrated_reports_group_is_retried_at_new_id(submit_env):
+    from aiogram.exceptions import TelegramMigrateToChat
+
+    msg = _submit_message(photo=_photo(), caption="/submit_shis_friend")
+    targets = []
+
+    async def send_photo(chat_id, file_id, **kw):
+        targets.append(chat_id)
+        if chat_id == -555:
+            raise TelegramMigrateToChat(method=MagicMock(), message="group upgraded", migrate_to_chat_id=-100555)
+
+    msg.bot.send_photo = AsyncMock(side_effect=send_photo)
+
+    await cat_commands.submit_shis_friend(msg)
+
+    assert targets == [-555, -100555]
+    assert "отправлено на модерацию" in msg.answer.await_args.args[0]
