@@ -348,6 +348,7 @@ help-message =
     📸 <b>Submit your own photos</b>
     /submit_shishka — suggest a Shishka photo for moderation
     /submit_shis_friend — suggest a cat-friend photo for moderation
+    Send the photo with the command as its caption, or reply to a photo with it
 
     🤖 <b>Auto-moderation</b>
     For newcomers the bot deletes spam, links and media on its own. Wrongly deleted? Message an admin: they can see which rule fired.
