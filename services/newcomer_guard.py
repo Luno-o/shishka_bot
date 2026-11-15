@@ -4,12 +4,15 @@ import asyncio
 import logging
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
+from html import escape
 
 import ormar
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 from db.models import PendingNewcomer
+from services.moderation_log import describe_rule, log_auto_event
+from utils.helpers import user_mention_by_id
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +129,15 @@ async def _remove_if_inactive(
         await bot.unban_chat_member(chat_id=chat_id, user_id=user_id, only_if_banned=True)
         await PendingNewcomer.objects.filter(id=record_id).update(status="removed")
         logger.info("Removed inactive newcomer %s from chat %s", user_id, chat_id)
+        await log_auto_event(
+            bot,
+            label="🚪 Новичок удалён",
+            body=(
+                f"Участник {user_mention_by_id(user_id)} удалён из чата {chat_id} "
+                "(без бана, может вернуться).\n\n"
+                f"<i>Правило:</i> {escape(describe_rule('newcomer_timeout'))}"
+            ),
+        )
     except asyncio.CancelledError:
         raise
     except (TelegramBadRequest, TelegramForbiddenError):

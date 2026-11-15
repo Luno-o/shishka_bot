@@ -2,6 +2,7 @@
 Utility helper functions.
 """
 import datetime
+from html import escape
 from typing import Optional
 
 import psutil
@@ -40,8 +41,10 @@ def get_message_text(message: Message) -> Optional[str]:
 
 
 def user_mention(from_user) -> str:
-    """Generate user mention HTML."""
-    _s = from_user.full_name
+    """Generate user mention HTML (the display name is HTML-escaped)."""
+    # Why: names are user-controlled; an unescaped "<" makes Telegram reject the
+    # whole HTML-mode log message.
+    _s = escape(from_user.full_name)
 
     if from_user.full_name != from_user.mention_html():
         _s += " (" + from_user.mention_html() + ")"
