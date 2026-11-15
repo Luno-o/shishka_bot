@@ -458,3 +458,45 @@ async def test_inactive_newcomer_removal_is_reported_with_timeout_rule():
     assert "<i>Правило:</i>" in body
     assert "groups.newcomer_message_timeout" in body
     assert "4242" in body
+
+
+# ------------------------------------------------------- review fix round 1
+
+
+@pytest.mark.parametrize(
+    ("first_name", "must_not_contain", "must_contain"),
+    [
+        ("<b", "<b ", "&lt;b"),
+        ("A&B <i>", "<i>", "A&amp;B &lt;i&gt;"),
+        ("Вася 🎉", "&lt;", "Вася 🎉"),
+    ],
+    ids=["open-tag", "ampersand-and-tag", "cyrillic-emoji"],
+)
+def test_user_mention_escapes_full_name(first_name, must_not_contain, must_contain):
+    from utils.helpers import user_mention
+
+    user = User(id=1, is_bot=False, first_name=first_name)
+
+    text = user_mention(user)
+
+    assert must_contain in text
+    assert must_not_contain not in text
+
+
+@pytest.mark.asyncio
+async def test_nsfw_report_is_still_sent_when_delete_fails(moderation, caplog):
+    bot = make_bot()
+
+    async def fail_on_delete(method, *args, **kwargs):
+        if isinstance(method, DeleteMessage):
+            raise TelegramBadRequest(method=method, message="message to delete not found")
+
+    bot.side_effect = fail_on_delete
+    message = make_message(bot, photo=[PhotoSize(file_id="f", file_unique_id="u", width=1, height=1)])
+
+    with caplog.at_level(logging.WARNING):
+        await group_events._report_nsfw(message, None, moderation["member"], "🔞 NSFW (фото)")
+
+    bot.send_message.assert_awaited_once()
+    assert bot.send_message.await_args.kwargs["reply_markup"] is not None
+    assert any(record.levelno == logging.WARNING for record in caplog.records)
