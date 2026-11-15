@@ -51,9 +51,9 @@ from services.cache import (
 )
 from services.admin_identity import sender_chat_admin_verdict
 from services.announcements import track_message
-from services.audit_log import record_deletion
 from services.ephemeral import cleanup_trigger, make_ephemeral
 from services.metrics import increment as record_metric
+from services.moderation_log import describe_rule, log_auto_action, log_auto_event
 from services.moderation_policy import (
     contains_chinese,
     contains_invisible_spacing,
@@ -367,14 +367,17 @@ async def _handle_joined_user(message: Message, new_user: User) -> None:
                 await message.bot.ban_chat_member(chat_id=message.chat.id, user_id=new_user.id)
                 logger.info("Removed non-admin bot %s", new_user.full_name)
 
-                await write_log(
+                await log_auto_event(
                     message.bot,
-                    f"🤖 Удалён бот без прав:\n"
-                    f"Имя: {new_user.full_name}\n"
-                    f"Username: @{new_user.username or 'нет'}\n"
-                    f"ID: {new_user.id}",
-                    "🚫 Антибот",
-                    message.chat.title
+                    label="🚫 Антибот",
+                    body=(
+                        f"🤖 Удалён бот без прав:\n"
+                        f"Имя: {escape(new_user.full_name)}\n"
+                        f"Username: @{escape(new_user.username or 'нет')}\n"
+                        f"ID: {new_user.id}\n\n"
+                        f"<i>Правило:</i> {escape(describe_rule('unwanted_bot'))}"
+                    ),
+                    chat_title=message.chat.title,
                 )
                 return
             logger.info("Bot %s is an administrator", new_user.full_name)
@@ -417,13 +420,16 @@ async def _handle_joined_user(message: Message, new_user: User) -> None:
 
             if should_send_alert(message.chat.id):
                 record_metric("raids_detected")
-                await write_log(
+                await log_auto_event(
                     message.bot,
-                    f"⚠️ Похоже на рейд: слишком много новых участников за короткое время.\n"
-                    f"Новички временно ограничены в отправке сообщений "
-                    f"(~{raid_restrict_seconds() // 60} мин), пока админы не разберутся.",
-                    "🛡️ Антирейд",
-                    message.chat.title
+                    label="🛡️ Антирейд",
+                    body=(
+                        f"⚠️ Похоже на рейд: слишком много новых участников за короткое время.\n"
+                        f"Новички временно ограничены в отправке сообщений "
+                        f"(~{raid_restrict_seconds() // 60} мин), пока админы не разберутся.\n\n"
+                        f"<i>Правило:</i> {escape(describe_rule('raid'))}"
+                    ),
+                    chat_title=message.chat.title,
                 )
         else:
             await schedule_newcomer_check(
@@ -510,6 +516,12 @@ async def on_user_contact(message: Message) -> None:
 
     if tg_member.status not in MemberStatus.admin_statuses():
         await message.delete()
+        await log_auto_action(
+            message,
+            rule="contact",
+            label="📇 Антиспам (контакт)",
+            reputation=member.reputation_points,
+        )
 
 
 # shared locations
@@ -537,12 +549,12 @@ async def on_user_location(message: Message) -> None:
             reputation_points=-10
         )
 
-        await write_log(
-            message.bot,
-            f"Геолокация удалена\n\n<i>Автор:</i> {user_mention(message.from_user)}\n"
-            f"<i>Репутация:</i> {member.reputation_points}",
-            "📍 Антиспам (геолокация)",
-            message.chat.title
+        await log_auto_action(
+            message,
+            rule="location",
+            label="📍 Антиспам (геолокация)",
+            text="Геолокация удалена",
+            reputation=member.reputation_points,
         )
         await _maybe_autoban(message, member, 10, "геолокация")
 
@@ -571,12 +583,12 @@ async def on_external_reply(message: Message) -> None:
             reputation_points=-10
         )
 
-        msg_text = get_message_text(message) or "[медиа без текста]"
-        await write_log(
-            message.bot,
-            f"{msg_text}\n\n<i>Автор:</i> {user_mention(message.from_user)}",
-            "↩️ Антиспам (кросс-чат)",
-            message.chat.title
+        await log_auto_action(
+            message,
+            rule="external_reply",
+            label="↩️ Антиспам (кросс-чат)",
+            text=get_message_text(message),
+            reputation=member.reputation_points,
         )
         await _maybe_autoban(message, member, 10, "кросс-чат")
 
@@ -630,13 +642,12 @@ async def on_user_forward(message: Message) -> None:
         elif message.forward_sender_name:
             forward_from = f"👤 {message.forward_sender_name}"
 
-        await write_log(
-            message.bot,
-            f"Удалён форвард от: {forward_from}\n\n"
-            f"<i>Автор:</i> {user_mention(message.from_user)}\n"
-            f"<i>Репутация:</i> {member.reputation_points}",
-            "📨 Антиспам",
-            message.chat.title
+        await log_auto_action(
+            message,
+            rule="forward",
+            label="📨 Антиспам",
+            text=f"Удалён форвард от: {forward_from}",
+            reputation=member.reputation_points,
         )
 
 
@@ -659,6 +670,13 @@ async def on_user_media(message: Message) -> None:
     if (tg_member.status not in MemberStatus.admin_statuses() and
             member.reputation_points < config.spam.allow_media_threshold):
         await message.delete()
+        await log_auto_action(
+            message,
+            rule="media",
+            label="🖼️ Антиспам (медиа)",
+            text=get_message_text(message),
+            reputation=member.reputation_points,
+        )
 
 
 ### CHANNEL AUTO-FORWARD ###
@@ -713,6 +731,13 @@ async def on_user_message(message: Message) -> None:
     if message.content_type != ContentType.TEXT:
         if member.reputation_points < config.spam.allow_media_threshold:
             await message.delete()
+            await log_auto_action(
+                message,
+                rule="media",
+                label="🖼️ Антиспам (медиа)",
+                text=get_message_text(message),
+                reputation=member.reputation_points,
+            )
             return
 
     msg_text = get_message_text(message)
@@ -727,10 +752,13 @@ async def on_user_message(message: Message) -> None:
                 reputation_points=-5
             )
             record_metric("spam_deleted_cn")
-            record_deletion(message.chat.id, user_id, "CN-спам", msg_text)
-            log_msg = msg_text
-            log_msg += f"\n\n<i>Автор:</i> {user_mention(message.from_user)}"
-            await write_log(message.bot, log_msg, "🈲 Антиспам (CN)", message.chat.title)
+            await log_auto_action(
+                message,
+                rule="cn_spam",
+                label="🈲 Антиспам (CN)",
+                text=msg_text,
+                reputation=member.reputation_points,
+            )
             await _maybe_autoban(message, member, 5, "CN-спам")
             return
 
@@ -743,10 +771,13 @@ async def on_user_message(message: Message) -> None:
                 reputation_points=-10
             )
             record_metric("spam_deleted_invisible_spacing")
-            record_deletion(message.chat.id, user_id, "невидимые символы", msg_text)
-            log_msg = msg_text
-            log_msg += f"\n\n<i>Автор:</i> {user_mention(message.from_user)}"
-            await write_log(message.bot, log_msg, "👻 Антиспам (невидимые символы)", message.chat.title)
+            await log_auto_action(
+                message,
+                rule="invisible_spacing",
+                label="👻 Антиспам (невидимые символы)",
+                text=msg_text,
+                reputation=member.reputation_points,
+            )
             await _maybe_autoban(message, member, 10, "невидимые символы")
             return
 
@@ -759,12 +790,12 @@ async def on_user_message(message: Message) -> None:
                 reputation_points=-5
             )
             record_metric("spam_deleted_single_emoji")
-            record_deletion(message.chat.id, user_id, "одинокий эмодзи", msg_text)
-            await write_log(
-                message.bot,
-                f"{msg_text}\n\n<i>Автор:</i> {user_mention(message.from_user)}",
-                "🤖 Антиспам (эмодзи)",
-                message.chat.title
+            await log_auto_action(
+                message,
+                rule="single_emoji",
+                label="🤖 Антиспам (эмодзи)",
+                text=msg_text,
+                reputation=member.reputation_points,
             )
             return
 
@@ -778,12 +809,12 @@ async def on_user_message(message: Message) -> None:
                 reputation_points=-10
             )
             record_metric("spam_deleted_link")
-            record_deletion(message.chat.id, user_id, "ссылка", msg_text)
-            await write_log(
-                message.bot,
-                f"{msg_text}\n\n<i>Автор:</i> {user_mention(message.from_user)}",
-                "🔗 Антиспам (ссылка)",
-                message.chat.title
+            await log_auto_action(
+                message,
+                rule="link",
+                label="🔗 Антиспам (ссылка)",
+                text=msg_text,
+                reputation=member.reputation_points,
             )
             await _maybe_autoban(message, member, 10, "ссылка")
             return
@@ -799,12 +830,18 @@ async def on_user_message(message: Message) -> None:
                 logger.info(f"🔍 Результат проверки спама: {is_spam} (тип: {type(is_spam)})")
                 if is_spam:
                     record_metric("spam_deleted_ml")
-                    record_deletion(message.chat.id, user_id, "ML-спам", msg_text)
                     await message.delete()
                     await queue_member_update(
                         user_id,
                         violations_count_spam=1,
                         reputation_points=-5
+                    )
+                    await log_auto_action(
+                        message,
+                        rule="ml_spam",
+                        label="🤖 Антиспам (ML)",
+                        text=msg_text,
+                        reputation=member.reputation_points,
                     )
                     await _maybe_autoban(message, member, 5, "спам")
                     return
@@ -836,12 +873,12 @@ async def check_for_unwanted(message: Message, msg_text: str, member: MemberData
                 (message.date - message.reply_to_message.forward_date).seconds <= interval):
             try:
                 await message.delete()
-                record_deletion(message.chat.id, message.from_user.id, "первый коммент (антибот)", message.text)
-                await write_log(
-                    message.bot,
-                    f"Удалено сообщение: {message.text}\n\n<i>Автор:</i> {user_mention(message.from_user)}",
-                    "🤖 Антибот",
-                    message.chat.title
+                await log_auto_action(
+                    message,
+                    rule="first_comment",
+                    label="🤖 Антибот",
+                    text=message.text,
+                    reputation=member.reputation_points,
                 )
                 return True
             except TelegramBadRequest:
@@ -870,7 +907,7 @@ async def check_for_unwanted(message: Message, msg_text: str, member: MemberData
 
         if is_nsfw:
             extra = f"<i>Scores:</i> {_format_nsfw_scores(prediction)}" if prediction else None
-            await _report_nsfw(message, msg_text, member, "🔞 NSFW (фото)", extra)
+            await _report_nsfw(message, msg_text, member, "🔞 NSFW (фото)", extra, rule="nsfw_photo")
             return True
 
     if is_low_rep and not is_nsfw_profile_on_cooldown(user_id):
@@ -895,7 +932,7 @@ async def check_for_unwanted(message: Message, msg_text: str, member: MemberData
 
             if is_nsfw:
                 extra = f"<i>Scores:</i> {_format_nsfw_scores(prediction)}" if prediction else None
-                await _report_nsfw(message, msg_text, member, "🔞 NSFW (профиль)", extra)
+                await _report_nsfw(message, msg_text, member, "🔞 NSFW (профиль)", extra, rule="nsfw_profile")
                 return True
 
     return False
@@ -917,13 +954,14 @@ async def _maybe_autoban(
                 chat_id=message.chat.id,
                 user_id=message.from_user.id
             )
-            await write_log(
-                message.bot,
-                f"Автобан ({reason}): {new_violations} нарушений\n"
-                f"<i>Репутация:</i> {new_rep}\n\n"
-                f"<i>Пользователь:</i> {user_mention(message.from_user)}",
-                "🚫 Автобан",
-                message.chat.title
+            await log_auto_action(
+                message,
+                rule="autoban",
+                label="🚫 Автобан",
+                extra=f"Автобан ({escape(reason)}): {new_violations} нарушений",
+                reputation=new_rep,
+                deleted=False,
+                rule_params={"violations": new_violations},
             )
         except Exception:
             pass
@@ -931,16 +969,10 @@ async def _maybe_autoban(
 
 async def _report_nsfw(
     message: Message, msg_text: Optional[str], member: MemberData,
-    log_label: str, extra_info: str = None
+    log_label: str, extra_info: Optional[str] = None, *, rule: str = "nsfw_photo"
 ) -> None:
-    """Delete message and report to log channel with action buttons."""
+    """Delete the message and report it to the logs chat with action buttons."""
     record_metric("nsfw_catches")
-    record_deletion(message.chat.id, message.from_user.id, log_label, msg_text)
-    log_msg = msg_text or "[медиа без текста]"
-    if extra_info:
-        log_msg += f"\n\n{extra_info}"
-    log_msg += f"\n\n<i>Автор:</i> {user_mention(message.from_user)}"
-
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text="❌ NSFW + бан",
@@ -952,12 +984,16 @@ async def _report_nsfw(
         )]
     ])
 
-    await message.bot.send_message(
-        config.groups.logs,
-        generate_log_message(log_msg, log_label, message.chat.title),
-        reply_markup=keyboard
-    )
     await message.delete()
+    await log_auto_action(
+        message,
+        rule=rule,
+        label=log_label,
+        text=msg_text,
+        extra=extra_info,
+        reply_markup=keyboard,
+        reputation=member.reputation_points,
+    )
 
 
 def _format_nsfw_scores(prediction: dict) -> str:

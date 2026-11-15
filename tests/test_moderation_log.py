@@ -127,7 +127,9 @@ def test_unknown_rule_key_raises():
 
 
 @pytest.mark.asyncio
-async def test_log_contains_rule_author_reputation_and_label():
+async def test_log_contains_rule_author_reputation_and_label(monkeypatch):
+    # Why: config.toml overrides the default, so pin the value the test asserts on.
+    monkeypatch.setattr(config.spam, "links_rep_threshold", 50)
     bot = make_bot()
     message = make_message(bot, text="hello")
 
