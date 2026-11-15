@@ -103,7 +103,10 @@ def _submit_message(*, photo=None, caption=None, text=None, reply=None):
     msg.caption = caption
     msg.text = text
     msg.reply_to_message = reply
-    msg.from_user = SimpleNamespace(id=10, full_name="Участник", username=None)
+    msg.from_user = SimpleNamespace(
+        id=10, full_name="Участник", username=None, url="tg://user?id=10",
+        mention_html=lambda: '<a href="tg://user?id=10">Участник</a>',
+    )
     msg.chat = SimpleNamespace(id=-100, title="Чат", type="supergroup")
     msg.answer = AsyncMock()
     msg.delete = AsyncMock()

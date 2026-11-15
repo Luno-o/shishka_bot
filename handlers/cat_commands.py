@@ -1,5 +1,6 @@
 import logging
 import random
+from html import escape
 from aiogram import Router, F
 from aiogram.types import Message, ContentType, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.filters import Command, CommandObject
@@ -9,6 +10,7 @@ from db.models import CatPhoto
 from filters import InMainGroups
 from services.admin_identity import actor_id, is_admin_sender
 from services.cat_submissions import queue_submission, peek_submission, pop_submission
+from services.ephemeral import delete_silently
 from services.metrics import increment as record_metric
 from utils import get_string, user_mention, write_log
 
@@ -161,10 +163,7 @@ async def _add_cat_media(message: Message, category: str, command_name: str) -> 
         except NoMatch:
             pass
 
-        description = None
-        parts = message.text.split(maxsplit=1)
-        if len(parts) > 1:
-            description = parts[1]
+        description = _command_description(message)
 
         new_media = await CatPhoto.objects.create(
             file_id=file_id,
@@ -217,18 +216,45 @@ def _submission_keyboard(key: str) -> InlineKeyboardMarkup:
     ])
 
 
-async def _submit_cat_media(message: Message, category: str, command_name: str) -> None:
-    """Queue a user-submitted photo/animation for admin approval."""
-    if not message.reply_to_message:
-        await message.answer(
-            f"🐱 Ответьте на **фото** или **гифку** командой /{command_name}, "
-            f"чтобы предложить её на модерацию."
-        )
-        return
+def _command_description(message: Message) -> str | None:
+    """Return the text after the command, from the message text or caption."""
+    parts = (message.text or message.caption or "").split(maxsplit=1)
+    return parts[1] if len(parts) > 1 else None
 
-    extracted = _extract_reply_media(message.reply_to_message)
+
+async def _send_for_review(message: Message, media_type: str, file_id: str, caption: str, key: str) -> bool:
+    """Send a submission to the reports chat, falling back to the logs chat.
+
+    Returns True once one chat accepted it.
+    """
+    targets = [chat_id for chat_id in (config.groups.reports, config.groups.logs) if chat_id]
+    send = message.bot.send_animation if media_type == "animation" else message.bot.send_photo
+    for chat_id in dict.fromkeys(targets):
+        try:
+            await send(chat_id, file_id, caption=caption, reply_markup=_submission_keyboard(key))
+            return True
+        except Exception as err:
+            # Why: the reason (wrong id, bot not in chat, migrated group) is only
+            # visible here; the member just sees a generic error.
+            logger.exception("Failed to send cat submission to review chat %s: %s", chat_id, err)
+    return False
+
+
+async def _submit_cat_media(message: Message, category: str, command_name: str) -> None:
+    """Queue a user-submitted photo/animation for admin approval.
+
+    The media is taken from the message itself (photo sent with the command as
+    caption) or, failing that, from the replied-to message.
+    """
+    # Why: auto-moderation deletes low-rep members' photos at once, so replying
+    # to one's own photo is impossible for them; the caption form must work.
+    own = _extract_reply_media(message)
+    extracted = own or (_extract_reply_media(message.reply_to_message) if message.reply_to_message else None)
     if extracted is None:
-        await message.answer("❌ Пожалуйста, ответьте на **фото** или **гифку** (анимацию)")
+        await message.answer(
+            f"🐱 Отправьте <b>фото</b> или <b>гифку</b> с подписью /{command_name} "
+            f"или ответьте этой командой на фото, чтобы предложить его на модерацию."
+        )
         return
     media_type, file_id, file_unique_id = extracted
 
@@ -241,13 +267,9 @@ async def _submit_cat_media(message: Message, category: str, command_name: str) 
     except NoMatch:
         pass
 
-    description = None
-    parts = message.text.split(maxsplit=1)
-    if len(parts) > 1:
-        description = parts[1]
+    description = _command_description(message)
 
-    review_chat_id = config.groups.reports or config.groups.logs
-    if not review_chat_id:
+    if not (config.groups.reports or config.groups.logs):
         await message.answer("❌ Очередь модерации не настроена (нет reports/logs чата). Сообщите админу.")
         return
 
@@ -264,25 +286,19 @@ async def _submit_cat_media(message: Message, category: str, command_name: str) 
     caption = (
         f"🆕 Предложено фото на модерацию ({label})\n\n"
         f"<i>От:</i> {user_mention(message.from_user)}\n"
-        f"<i>Чат:</i> {message.chat.title or message.chat.id}\n"
-        f"<i>Описание:</i> {description or 'нет'}"
+        f"<i>Чат:</i> {escape(message.chat.title or str(message.chat.id))}\n"
+        f"<i>Описание:</i> {escape(description) if description else 'нет'}"
     )
 
-    try:
-        if media_type == 'animation':
-            await message.bot.send_animation(
-                review_chat_id, file_id, caption=caption, reply_markup=_submission_keyboard(key)
-            )
-        else:
-            await message.bot.send_photo(
-                review_chat_id, file_id, caption=caption, reply_markup=_submission_keyboard(key)
-            )
-    except Exception:
-        logger.exception("Failed to send cat submission to review chat")
+    if not await _send_for_review(message, media_type, file_id, caption, key):
         pop_submission(key)
         await message.answer("❌ Не удалось отправить на модерацию. Попробуйте позже.")
         return
 
+    if own is not None:
+        # Why: the photo now waits in the review chat; leaving it in the group
+        # would let anyone bypass the low-rep media rule via this command.
+        await delete_silently(message)
     await message.answer(f"✅ Спасибо! Ваше фото ({label}) отправлено на модерацию.")
 
 
