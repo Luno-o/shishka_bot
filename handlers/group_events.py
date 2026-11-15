@@ -49,6 +49,7 @@ from services.cache import (
     get_member_orm,
     MemberData
 )
+from services.admin_identity import sender_chat_admin_verdict
 from services.announcements import track_message
 from services.audit_log import record_deletion
 from services.ephemeral import cleanup_trigger, make_ephemeral
@@ -484,6 +485,9 @@ async def _handle_joined_user(message: Message, new_user: User) -> None:
 @router.message(InMainGroups(), F.content_type == ContentType.VOICE)
 async def on_user_voice(message: Message) -> None:
     """React to voice messages (discourage them)."""
+    if sender_chat_admin_verdict(message) is True:
+        return
+
     member = await retrieve_or_create_member(message.from_user.id)
     if is_moderation_exempt(member):
         return
@@ -496,6 +500,9 @@ async def on_user_voice(message: Message) -> None:
 @router.message(InMainGroups(), F.content_type == ContentType.CONTACT)
 async def on_user_contact(message: Message) -> None:
     """Delete contact messages from non-admins."""
+    if sender_chat_admin_verdict(message) is True:
+        return
+
     member = await retrieve_or_create_member(message.from_user.id)
     if is_moderation_exempt(member):
         return
@@ -509,7 +516,7 @@ async def on_user_contact(message: Message) -> None:
 @router.message(InMainGroups(), F.content_type == ContentType.LOCATION)
 async def on_user_location(message: Message) -> None:
     """Delete shared locations from low-rep users."""
-    if message.from_user is None:
+    if message.from_user is None or sender_chat_admin_verdict(message) is True:
         return
 
     tg_member = await retrieve_tgmember(message.bot, message.chat.id, message.from_user.id)
@@ -543,7 +550,7 @@ async def on_user_location(message: Message) -> None:
 # cross-chat reply restriction ("Reply in Another Chat")
 @router.message(InMainGroups(), F.external_reply, ~F.is_automatic_forward)
 async def on_external_reply(message: Message) -> None:
-    if message.from_user is None:
+    if message.from_user is None or sender_chat_admin_verdict(message) is True:
         return
 
     tg_member = await retrieve_tgmember(message.bot, message.chat.id, message.from_user.id)
@@ -595,6 +602,9 @@ async def on_user_forward(message: Message) -> None:
         except Exception:
             pass
 
+    if sender_chat_admin_verdict(message) is True:
+        return
+
     member = await retrieve_or_create_member(message.from_user.id)
     if is_moderation_exempt(member):
         return
@@ -638,6 +648,9 @@ async def on_user_forward(message: Message) -> None:
 )
 async def on_user_media(message: Message) -> None:
     """Delete media from low-rep users."""
+    if sender_chat_admin_verdict(message) is True:
+        return
+
     member = await retrieve_or_create_member(message.from_user.id)
     if is_moderation_exempt(member):
         return
@@ -680,7 +693,7 @@ async def on_user_message(message: Message) -> None:
     track_message(message.chat.id, is_announcement=False)
     record_metric("messages_seen")
 
-    if message.from_user is None:
+    if message.from_user is None or sender_chat_admin_verdict(message) is True:
         return
 
     member = await retrieve_or_create_member(message.from_user.id)

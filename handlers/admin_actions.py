@@ -10,6 +10,7 @@ from aiogram.types import ChatPermissions, Message
 from config import config
 from db.models import Member
 from filters import IsAdminFilter, InMainGroups, IsOwnerFilter
+from services.admin_identity import actor_id
 from services.audit_log import get_recent
 from services.cache import get_member_orm, update_member_cache
 from services.ephemeral import cleanup_trigger, make_ephemeral
@@ -168,7 +169,7 @@ async def cmd_warn(message: Message, command: CommandObject) -> None:
 
     reason = command.args.strip() if command.args else None
 
-    new_count = await add_warning(message.chat.id, target.id, message.from_user.id, reason)
+    new_count = await add_warning(message.chat.id, target.id, actor_id(message), reason)
     record_metric("warnings_issued")
     consequence = consequence_for(new_count)
 
@@ -450,7 +451,7 @@ async def cmd_linkallow(message: Message, command: CommandObject) -> None:
 
     domain = command.args.strip()
     try:
-        added = await add_allowed_domain(domain, message.from_user.id)
+        added = await add_allowed_domain(domain, actor_id(message))
     except ValueError:
         await message.reply("❌ Похоже на некорректный домен. Пример: <code>!linkallow example.com</code>")
         return

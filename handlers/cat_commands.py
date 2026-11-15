@@ -7,6 +7,7 @@ from aiogram.filters import Command, CommandObject
 from config import config
 from db.models import CatPhoto
 from filters import InMainGroups
+from services.admin_identity import actor_id, is_admin_sender
 from services.cat_submissions import queue_submission, peek_submission, pop_submission
 from services.metrics import increment as record_metric
 from utils import get_string, user_mention, write_log
@@ -115,21 +116,7 @@ async def send_random_friend_cat(message: Message) -> None:
 async def is_chat_admin(message: Message) -> bool:
     """Проверяет, является ли пользователь администратором чата."""
     try:
-        # Проверяем обычного пользователя
-        member = await message.bot.get_chat_member(message.chat.id, message.from_user.id)
-        if member.status in ['administrator', 'creator']:
-            return True
-
-        # Проверяем анонимного админа (sender_chat)
-        if message.sender_chat:
-            try:
-                sender_member = await message.bot.get_chat_member(message.chat.id, message.sender_chat.id)
-                if sender_member.status in ['administrator', 'creator']:
-                    return True
-            except:
-                pass
-
-        return False
+        return await is_admin_sender(message)
     except Exception as e:
         logger.error(f"Ошибка проверки прав: {e}")
         return False
@@ -182,7 +169,7 @@ async def _add_cat_media(message: Message, category: str, command_name: str) -> 
         new_media = await CatPhoto.objects.create(
             file_id=file_id,
             file_unique_id=file_unique_id,
-            added_by=message.from_user.id,
+            added_by=actor_id(message),
             description=description,
             media_type=media_type,
             category=category,
