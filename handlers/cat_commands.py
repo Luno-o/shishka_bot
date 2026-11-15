@@ -2,6 +2,7 @@ import logging
 import random
 from html import escape
 from aiogram import Router, F
+from aiogram.exceptions import TelegramMigrateToChat
 from aiogram.types import Message, ContentType, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.filters import Command, CommandObject
 
@@ -233,6 +234,18 @@ async def _send_for_review(message: Message, media_type: str, file_id: str, capt
         try:
             await send(chat_id, file_id, caption=caption, reply_markup=_submission_keyboard(key))
             return True
+        except TelegramMigrateToChat as err:
+            # Why: a basic group upgraded to a supergroup gets a new id; keep
+            # working and tell the operator which id to put into the config.
+            logger.warning(
+                "Review chat %s was migrated to %s; update GROUPS_REPORTS/GROUPS_LOGS",
+                chat_id, err.migrate_to_chat_id,
+            )
+            try:
+                await send(err.migrate_to_chat_id, file_id, caption=caption, reply_markup=_submission_keyboard(key))
+                return True
+            except Exception:
+                logger.exception("Failed to send cat submission to migrated chat %s", err.migrate_to_chat_id)
         except Exception as err:
             # Why: the reason (wrong id, bot not in chat, migrated group) is only
             # visible here; the member just sees a generic error.
