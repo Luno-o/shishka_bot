@@ -28,14 +28,28 @@ class FakeBot:
     async def unban_chat_member(self, chat_id, user_id, only_if_banned):
         self.unbanned.append((chat_id, user_id, only_if_banned))
 
+    async def send_message(self, chat_id, text, **kwargs):
+        # removal is reported to the logs chat with the rule that fired
+        return None
+
+
+async def _wait_for_status(chat_id, user_id, expected, timeout=2.0):
+    # Why: a fixed short sleep raced the DB updates on slow machines.
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while True:
+        record = await PendingNewcomer.objects.get(chat_id=chat_id, user_id=user_id)
+        if record.status == expected or loop.time() >= deadline:
+            return record
+        await asyncio.sleep(0.02)
+
 
 @pytest.mark.asyncio
 async def test_inactive_newcomer_is_removed():
     bot = FakeBot()
     await schedule_newcomer_check(bot, -100, 10, 0.01)
-    await asyncio.sleep(0.05)
 
-    record = await PendingNewcomer.objects.get(chat_id=-100, user_id=10)
+    record = await _wait_for_status(-100, 10, "removed")
     assert record.status == "removed"
     assert bot.banned == [(-100, 10)]
     assert bot.unbanned == [(-100, 10, True)]
