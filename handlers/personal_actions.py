@@ -18,6 +18,8 @@ from config import config
 from filters import IsOwnerFilter, IsAdminFilter, InMainGroups
 from services.nsfw import classify_explicit_content as nsfw_predict
 from services.profanity import check_for_profanity
+from services.admin_identity import sender_chat_admin_verdict
+from services.ephemeral import cleanup_trigger, make_ephemeral
 from utils import remove_prefix
 
 router = Router(name="personal_actions")
@@ -385,3 +387,41 @@ async def cmd_nsfw_test(message: Message) -> None:
     lines.append(f"\n<b>Verdict:</b> {'🚫 NSFW' if verdict else '✅ Safe'}")
 
     await message.reply("\n".join(lines))
+
+
+@router.message(
+    F.chat.type == "private",
+    Command("myid", "мойid", prefix="!/"),
+)
+async def cmd_my_id(message: Message) -> None:
+    """Show the sender's id and whether the bot treats them as the owner (private chat only).
+
+    Never reveals the configured owner id; it exists to check BOT_OWNER.
+    """
+    is_owner = message.from_user is not None and message.from_user.id == config.bot.owner
+    verdict = "✅ Вы владелец бота." if is_owner else "❌ Вы не владелец бота (BOT_OWNER на сервере другой)."
+    await message.reply(f"🆔 Ваш id: <code>{message.from_user.id}</code>\n{verdict}")
+
+
+_OWNER_COMMANDS = (
+    "msg", "log", "reload", "backup_now", "backup", "metrics", "chatid",
+    "top_violators_spam", "top_violators_profanity",
+)
+
+
+# Why: must stay after the owner handlers - it only sees commands they rejected.
+@router.message(Command(*_OWNER_COMMANDS, prefix="!/"))
+async def owner_command_hint(message: Message) -> None:
+    """Explain why an owner command did nothing when sent anonymously or as the linked channel.
+
+    Telegram hides who stands behind an anonymous admin, so the owner cannot be
+    recognised there. Other senders get no answer, as before.
+    """
+    if sender_chat_admin_verdict(message) is not True:
+        return
+    sent = await message.answer(
+        "🔒 Это команда владельца бота. Когда вы пишете анонимно или от имени канала, бот не может "
+        "узнать владельца — напишите её со своего аккаунта или боту в личку."
+    )
+    await cleanup_trigger(message)
+    make_ephemeral(message, sent, config.ephemeral.help_ttl)
