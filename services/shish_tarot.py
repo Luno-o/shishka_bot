@@ -9,12 +9,13 @@ import ormar
 
 from config import config
 from db.models import CatPhoto, ShishTarotReading
+from services.cat_media import CATEGORY_SHISHKA, media_of
 
 _assignment_lock = asyncio.Lock()
 
 
 async def get_daily_shishka(user_id: int, reading_date: date | None = None) -> CatPhoto | None:
-    """Return the media assigned to a user for a day, creating it if needed."""
+    """Return the Shishka media assigned to a user for a day, creating it if needed (never a cat friend)."""
     day = (reading_date or datetime.now(ZoneInfo(config.bot.timezone)).date()).isoformat()
 
     async with _assignment_lock:
@@ -29,11 +30,14 @@ async def get_daily_shishka(user_id: int, reading_date: date | None = None) -> C
         if reading:
             try:
                 media = await CatPhoto.objects.get(id=reading.cat_photo_id)
-                return media
+                # Why: readings made before the category filter may point to a
+                # cat friend; the tarot shows Shishka only, so pick again.
+                if media.category == CATEGORY_SHISHKA:
+                    return media
             except ormar.NoMatch:
                 pass
 
-        media_list = await CatPhoto.objects.all()
+        media_list = await media_of(CATEGORY_SHISHKA)
         if not media_list:
             return None
 

@@ -1,6 +1,6 @@
 """
 Pending cat-photo submissions from regular users (!submit_shishka /
-!submit_shis_friend), awaiting an admin's approve/reject decision.
+!submit_shish_friend), awaiting an admin's approve/reject decision.
 
 Mirrors the pending_messages pattern in handlers/personal_actions.py:
 callback_data has a strict length limit and can't carry a full file_id, so

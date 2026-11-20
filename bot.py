@@ -144,10 +144,10 @@ async def set_bot_commands(bot: Bot) -> None:
         BotCommand(command="top", description="Топ по репутации"),
         BotCommand(command="report", description="Пожаловаться на сообщение"),
         BotCommand(command="add_shishka", description="Добавить фото Шишки (админ)"),
-        BotCommand(command="add_shis_friend", description="Добавить фото кота-друга (админ)"),
-        BotCommand(command="shis_friends", description="Показать фото кота-друга 🐾"),
+        BotCommand(command="add_shish_friend", description="Добавить фото кота-друга (админ)"),
+        BotCommand(command="shish_friends", description="Показать фото кота-друга 🐾"),
         BotCommand(command="submit_shishka", description="Предложить фото Шишки на модерацию"),
-        BotCommand(command="submit_shis_friend", description="Предложить фото кота-друга на модерацию"),
+        BotCommand(command="submit_shish_friend", description="Предложить фото кота-друга на модерацию"),
         BotCommand(command="list_shishka", description="Список фото Шишки (админ)"),
         BotCommand(command="del_shishka", description="Удалить фото Шишки (админ)"),
     ]

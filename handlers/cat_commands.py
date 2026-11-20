@@ -10,6 +10,7 @@ from config import config
 from db.models import CatPhoto
 from filters import InMainGroups
 from services.admin_identity import actor_id, is_admin_sender
+from services.cat_media import CATEGORY_FRIEND, CATEGORY_SHISHKA
 from services.cat_submissions import queue_submission, peek_submission, pop_submission
 from services.ephemeral import delete_silently
 from services.metrics import increment as record_metric
@@ -18,8 +19,6 @@ from utils import get_string, user_mention, write_log
 logger = logging.getLogger(__name__)
 router = Router(name="cat_commands")
 
-CATEGORY_SHISHKA = "shishka"
-CATEGORY_FRIEND = "friend"
 CATEGORY_LABELS = {CATEGORY_SHISHKA: "Шишка", CATEGORY_FRIEND: "кот-друг"}
 CATEGORY_EMOJI = {CATEGORY_SHISHKA: "🐱", CATEGORY_FRIEND: "🐾"}
 
@@ -84,7 +83,9 @@ async def send_random_cat(message: Message) -> None:
 
 @router.message(
     InMainGroups(),
-    Command("shis_friends", "shisfriend", "shis_friend", "друзья_шишки", prefix="!/")
+    # legacy shis_* names stay as aliases for members used to them
+    Command("shish_friends", "shish_friend", "shishfriend", "друзья_шишки",
+            "shis_friends", "shis_friend", "shisfriend", prefix="!/")
 )
 async def send_random_friend_cat(message: Message) -> None:
     """Send a random photo/animation of one of Shishka's cat friends."""
@@ -94,8 +95,8 @@ async def send_random_friend_cat(message: Message) -> None:
         if not media_list:
             await message.answer(
                 "🐾 В базе пока нет фото друзей Шишки! "
-                "Добавьте первое командой /add_shis_friend (админ) "
-                "или предложите своё через !submit_shis_friend"
+                "Добавьте первое командой /add_shish_friend (админ) "
+                "или предложите своё через /submit_shish_friend"
             )
             return
 
@@ -199,11 +200,11 @@ async def add_cat_media(message: Message) -> None:
 
 @router.message(
     InMainGroups(),
-    Command("add_shis_friend", prefix="!/")
+    Command("add_shish_friend", "add_shis_friend", prefix="!/")
 )
 async def add_friend_cat_media(message: Message) -> None:
     """Add a photo/animation of one of Shishka's cat friends (admin only)."""
-    await _add_cat_media(message, CATEGORY_FRIEND, "add_shis_friend")
+    await _add_cat_media(message, CATEGORY_FRIEND, "add_shish_friend")
 
 
 ### USER SUBMISSIONS (moderation queue) ###
@@ -326,11 +327,11 @@ async def submit_shishka(message: Message) -> None:
 
 @router.message(
     InMainGroups(),
-    Command("submit_shis_friend", prefix="!/")
+    Command("submit_shish_friend", "submit_shis_friend", prefix="!/")
 )
-async def submit_shis_friend(message: Message) -> None:
+async def submit_shish_friend(message: Message) -> None:
     """Any user can propose a cat-friend photo for admin approval."""
-    await _submit_cat_media(message, CATEGORY_FRIEND, "submit_shis_friend")
+    await _submit_cat_media(message, CATEGORY_FRIEND, "submit_shish_friend")
 
 
 @router.message(

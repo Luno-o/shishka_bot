@@ -14,13 +14,15 @@ class FakeMessage:
 
 
 def _cat_model(items):
-    return SimpleNamespace(objects=SimpleNamespace(all=AsyncMock(return_value=items)))
+    """Stand-in for services.cat_media.random_media; records the category asked for."""
+    picker = AsyncMock(return_value=items[0] if items else None)
+    return picker
 
 
 @pytest.mark.asyncio
 async def test_help_falls_back_to_text_when_database_has_no_media(monkeypatch):
     message = FakeMessage()
-    monkeypatch.setattr(help_handlers, "CatPhoto", _cat_model([]))
+    monkeypatch.setattr(help_handlers, "random_media", _cat_model([]))
 
     await help_handlers.send_help(message)
 
@@ -33,7 +35,7 @@ async def test_help_falls_back_to_text_when_database_has_no_media(monkeypatch):
 async def test_help_attaches_random_shishka(monkeypatch):
     message = FakeMessage()
     media = SimpleNamespace(file_id="telegram-file-id", media_type="photo")
-    monkeypatch.setattr(help_handlers, "CatPhoto", _cat_model([media]))
+    monkeypatch.setattr(help_handlers, "random_media", _cat_model([media]))
 
     await help_handlers.send_help(message)
 
@@ -56,7 +58,7 @@ async def test_rules_are_sent_without_group_or_throttle_dependencies():
 async def test_long_help_goes_as_media_plus_separate_text(monkeypatch):
     message = FakeMessage()
     media = SimpleNamespace(file_id="telegram-file-id", media_type="photo")
-    monkeypatch.setattr(help_handlers, "CatPhoto", _cat_model([media]))
+    monkeypatch.setattr(help_handlers, "random_media", _cat_model([media]))
     long_text = "\n\n".join(f"<b>Раздел {i}</b> " + "ш" * 90 for i in range(15))
     monkeypatch.setattr(help_handlers, "get_string", lambda key: long_text)
 
@@ -73,3 +75,13 @@ def test_user_help_does_not_advertise_admin_help():
     from utils import get_string as real_get_string
 
     assert "adminhelp" not in real_get_string("help-message")
+
+
+@pytest.mark.asyncio
+async def test_help_photo_is_shishka_only(monkeypatch):
+    picker = _cat_model([])
+    monkeypatch.setattr(help_handlers, "random_media", picker)
+
+    await help_handlers.send_help(FakeMessage())
+
+    picker.assert_awaited_once_with("shishka")
