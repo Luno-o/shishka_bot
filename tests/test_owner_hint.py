@@ -67,3 +67,24 @@ def test_hint_covers_every_owner_command():
                     names.update(f.callback.commands)
     assert {"metrics", "log", "chatid", "msg", "backup_now", "backup", "reload",
             "top_violators_spam", "top_violators_profanity"} <= names
+
+
+@pytest.mark.parametrize("is_owner", [True, False], ids=["owner", "not-owner"])
+@pytest.mark.asyncio
+async def test_myid_in_private_shows_id_and_owner_status(monkeypatch, is_owner):
+    from config import config
+
+    monkeypatch.setattr(config.bot, "owner", 777 if is_owner else 1)
+    msg = MagicMock()
+    msg.chat = SimpleNamespace(id=777, type="private")
+    msg.from_user = SimpleNamespace(id=777)
+    msg.sender_chat = None
+    msg.reply = AsyncMock()
+
+    await personal_actions.cmd_my_id(msg)
+
+    text = msg.reply.await_args.args[0]
+    assert "777" in text
+    assert ("владелец" in text.lower()) is True
+    assert ("не владелец" in text.lower()) is (not is_owner)
+    assert "1" not in text.replace("777", "")  # never reveals the configured owner id
