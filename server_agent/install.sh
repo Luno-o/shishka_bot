@@ -30,7 +30,11 @@ CHECK_TCP=MTProto:127.0.0.1:443
 EOF
   echo "Created $ENV_FILE"
 elif [ -n "$PROXY_HOST" ]; then
-  sed -i "s|^PROXY_HOST=.*|PROXY_HOST=$PROXY_HOST|" "$ENV_FILE"
+  if grep -q '^PROXY_HOST=' "$ENV_FILE"; then
+    sed -i "s|^PROXY_HOST=.*|PROXY_HOST=$PROXY_HOST|" "$ENV_FILE"
+  else
+    echo "PROXY_HOST=$PROXY_HOST" >> "$ENV_FILE"
+  fi
 fi
 
 systemctl daemon-reload
