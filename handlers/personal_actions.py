@@ -406,6 +406,7 @@ async def cmd_my_id(message: Message) -> None:
 _OWNER_COMMANDS = (
     "msg", "log", "reload", "backup_now", "backup", "metrics", "chatid",
     "top_violators_spam", "top_violators_profanity",
+    "server", "сервер", "status", "статус", "vpn_add", "vpn_del",
 )
 
 
