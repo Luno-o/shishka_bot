@@ -15,6 +15,7 @@ def register_all_handlers(dp: Dispatcher) -> None:
         group_events,
         help,
         personal_actions,
+        server_admin,
         shish_tarot,
         user_actions,
     )
@@ -31,6 +32,10 @@ def register_all_handlers(dp: Dispatcher) -> None:
 
     # Callback handlers
     dp.include_router(callbacks.router)
+
+    # Owner server panel (VPN keys, proxy). Before personal_actions: its owner_command_hint
+    # catch-all would otherwise answer these commands first.
+    dp.include_router(server_admin.router)
 
     # Personal/owner actions (ping, profanity check)
     dp.include_router(personal_actions.router)

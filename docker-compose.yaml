@@ -22,11 +22,17 @@ services:
       - LINKED_CHANNELS=${LINKED_CHANNELS:-}
       - HEALTHCHECK_ENABLED=${HEALTHCHECK_ENABLED:-true}
       - HEALTHCHECK_PORT=${HEALTHCHECK_PORT:-8080}
+      # Панель сервера (server_agent/): пусто = выключена
+      - SERVER_AGENT_URL=${SERVER_AGENT_URL:-}
+      - SERVER_AGENT_TOKEN=${SERVER_AGENT_TOKEN:-}
       - TZ=Europe/Moscow
       - PYTHONUNBUFFERED=1
       # Отключаем кэш Python в контейнере
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONHASHSEED=random
+    extra_hosts:
+      # агент сервера слушает docker0 (172.17.0.1) на хосте
+      - "host.docker.internal:host-gateway"
     ports:
       - "8081:8080"
     volumes:

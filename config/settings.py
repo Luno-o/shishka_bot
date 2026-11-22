@@ -185,6 +185,14 @@ class HealthCheckConfig(BaseModel):
     port: int = 8080
 
 
+class ServerAgentConfig(BaseModel):
+    """Host agent for the owner's server panel (server_agent/agent.py)."""
+    # e.g. http://host.docker.internal:8765; empty = panel disabled
+    url: str = ""
+    token: SecretStr = SecretStr("")
+    timeout: float = 30.0
+
+
 class AnnouncementGroupConfig(BaseModel):
     """Per-group announcement settings override."""
 
@@ -277,6 +285,7 @@ class Config(BaseModel):
     cache: CacheConfig = CacheConfig()
     announcements: AnnouncementsConfig = AnnouncementsConfig()
     ml: MLConfig = MLConfig()
+    server_agent: ServerAgentConfig = ServerAgentConfig()
 
 
 def get_config_path() -> Path:
@@ -373,6 +382,11 @@ def apply_env_overrides(config: Config) -> Config:
         config.healthcheck.port = int(os.environ["HEALTHCHECK_PORT"])
     if os.environ.get("HEALTHCHECK_ENABLED"):
         config.healthcheck.enabled = _parse_bool(os.environ["HEALTHCHECK_ENABLED"])
+
+    if os.environ.get("SERVER_AGENT_URL"):
+        config.server_agent.url = os.environ["SERVER_AGENT_URL"]
+    if os.environ.get("SERVER_AGENT_TOKEN"):
+        config.server_agent.token = SecretStr(os.environ["SERVER_AGENT_TOKEN"])
 
     return config
 

@@ -1,0 +1,18 @@
+[Unit]
+Description=Shishka host agent (owner panel API for AmneziaWG / MTProto)
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/shishka-agent.env
+ExecStart=/usr/bin/python3 /opt/shishka-agent/agent.py
+Restart=on-failure
+RestartSec=5
+# docker0 (172.17.0.1) may appear after the agent starts on boot
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do ip -4 addr show docker0 | grep -q inet && exit 0; sleep 1; done; exit 0'
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
