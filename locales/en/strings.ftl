@@ -341,13 +341,13 @@ help-message =
 
     🌲 <b>Just for fun</b>
     /shishka — get a random Shishka
-    /shis_friends — get a photo of one of Shishka's cat friends 🐾
+    /shish_friends — get a photo of one of Shishka's cat friends 🐾
     /shish_tarot — reveal your Shishka of the day 🔮
     /бу — try to scare the bot
 
     📸 <b>Submit your own photos</b>
     /submit_shishka — suggest a Shishka photo for moderation
-    /submit_shis_friend — suggest a cat-friend photo for moderation
+    /submit_shish_friend — suggest a cat-friend photo for moderation
     Send the photo with the command as its caption, or reply to a photo with it
 
     🤖 <b>Auto-moderation</b>

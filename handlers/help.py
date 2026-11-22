@@ -1,14 +1,13 @@
 """User-facing help, start, and rules commands."""
 
 import logging
-import random
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, Message
 
 from config import config
-from db.models import CatPhoto
+from services.cat_media import CATEGORY_SHISHKA, random_media
 from filters import HelpRequestFilter
 from services.ephemeral import cleanup_trigger, make_ephemeral
 from utils import get_string
@@ -30,8 +29,7 @@ async def send_help(message: Message) -> None:
     fits_caption = visible_length(help_text) <= CAPTION_LIMIT
 
     try:
-        media_list = await CatPhoto.objects.all()
-        media = random.choice(media_list) if media_list else None
+        media = await random_media(CATEGORY_SHISHKA)
         if media is not None:
             caption = help_text if fits_caption else None
             if media.media_type == "animation":

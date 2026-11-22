@@ -31,7 +31,8 @@ import numpy as np
 
 from config import config
 from filters import IsAdminFilter, InMainGroups, ThrottleFilter
-from db.models import CatPhoto, Spam
+from db.models import Spam
+from services.cat_media import CATEGORY_SHISHKA, random_media
 from services.gender import Gender
 from services.spam import predict_async as ruspam_predict
 from services.nsfw import classify_explicit_content as nsfw_predict
@@ -456,9 +457,8 @@ async def _handle_joined_user(message: Message, new_user: User) -> None:
     ])
 
     try:
-        media_list = await CatPhoto.objects.all()
-        if media_list:
-            media = random.choice(media_list)
+        media = await random_media(CATEGORY_SHISHKA)
+        if media is not None:
             if media.media_type == "animation":
                 await message.answer_animation(
                     animation=media.file_id,

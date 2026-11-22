@@ -80,10 +80,10 @@ async def test_send_random_friend_cat_empty_database_suggests_submit(monkeypatch
     await cat_commands.send_random_friend_cat(message)
 
     message.answer.assert_awaited_once()
-    assert "add_shis_friend" in message.answer.call_args.args[0]
+    assert "add_shish_friend" in message.answer.call_args.args[0]
 
 
-# --- regression: members could not use !submit_shis_friend / !submit_shishka ---
+# --- regression: members could not use !submit_shish_friend / !submit_shishka ---
 # Low-rep members' photos are deleted by auto-moderation at once, so they cannot
 # reply to their own photo; sending the photo with the command as its caption
 # must work instead.
@@ -133,7 +133,7 @@ def submit_env(monkeypatch):
 @pytest.mark.parametrize(
     ("command", "category"),
     [
-        ("/submit_shis_friend", cat_commands.CATEGORY_FRIEND),
+        ("/submit_shish_friend", cat_commands.CATEGORY_FRIEND),
         ("/submit_shishka", cat_commands.CATEGORY_SHISHKA),
     ],
     ids=["friend", "shishka"],
@@ -142,7 +142,7 @@ def submit_env(monkeypatch):
 async def test_photo_with_command_caption_is_submitted(submit_env, command, category):
     msg = _submit_message(photo=_photo(), caption=f"{command} рыжий 🐾")
     handler = (
-        cat_commands.submit_shis_friend if category == cat_commands.CATEGORY_FRIEND
+        cat_commands.submit_shish_friend if category == cat_commands.CATEGORY_FRIEND
         else cat_commands.submit_shishka
     )
 
@@ -161,9 +161,9 @@ async def test_photo_with_command_caption_is_submitted(submit_env, command, cate
 @pytest.mark.asyncio
 async def test_reply_with_text_command_still_works_and_keeps_replied_photo(submit_env):
     reply = SimpleNamespace(photo=_photo("rf", "ru"), animation=None)
-    msg = _submit_message(text="/submit_shis_friend", reply=reply)
+    msg = _submit_message(text="/submit_shish_friend", reply=reply)
 
-    await cat_commands.submit_shis_friend(msg)
+    await cat_commands.submit_shish_friend(msg)
 
     assert submit_env[0]["file_id"] == "rf"
     assert submit_env[0]["description"] is None
@@ -173,9 +173,9 @@ async def test_reply_with_text_command_still_works_and_keeps_replied_photo(submi
 @pytest.mark.asyncio
 async def test_own_photo_wins_over_reply_and_caption_without_text_does_not_crash(submit_env):
     reply = SimpleNamespace(photo=_photo("rf", "ru"), animation=None)
-    msg = _submit_message(photo=_photo("own", "ou"), caption="/submit_shis_friend", reply=reply)
+    msg = _submit_message(photo=_photo("own", "ou"), caption="/submit_shish_friend", reply=reply)
 
-    await cat_commands.submit_shis_friend(msg)
+    await cat_commands.submit_shish_friend(msg)
 
     assert submit_env[0]["file_id"] == "own"
     assert submit_env[0]["description"] is None
@@ -183,9 +183,9 @@ async def test_own_photo_wins_over_reply_and_caption_without_text_does_not_crash
 
 @pytest.mark.asyncio
 async def test_no_media_anywhere_explains_both_ways(submit_env):
-    msg = _submit_message(text="/submit_shis_friend")
+    msg = _submit_message(text="/submit_shish_friend")
 
-    await cat_commands.submit_shis_friend(msg)
+    await cat_commands.submit_shish_friend(msg)
 
     assert submit_env == []
     text = msg.answer.await_args.args[0]
@@ -194,10 +194,10 @@ async def test_no_media_anywhere_explains_both_ways(submit_env):
 
 @pytest.mark.asyncio
 async def test_review_caption_escapes_title_and_description(submit_env):
-    msg = _submit_message(photo=_photo(), caption="/submit_shis_friend <b>кот & пёс")
+    msg = _submit_message(photo=_photo(), caption="/submit_shish_friend <b>кот & пёс")
     msg.chat = SimpleNamespace(id=-100, title="Коты <3 & друзья", type="supergroup")
 
-    await cat_commands.submit_shis_friend(msg)
+    await cat_commands.submit_shish_friend(msg)
 
     caption = msg.bot.send_photo.await_args.kwargs["caption"]
     assert "&lt;b&gt;кот &amp; пёс" in caption
@@ -209,7 +209,7 @@ async def test_reports_chat_failure_falls_back_to_logs(submit_env, monkeypatch):
     from aiogram.exceptions import TelegramBadRequest
 
     monkeypatch.setattr(cat_commands.config.groups, "logs", -777)
-    msg = _submit_message(photo=_photo(), caption="/submit_shis_friend")
+    msg = _submit_message(photo=_photo(), caption="/submit_shish_friend")
     targets = []
 
     async def send_photo(chat_id, file_id, **kw):
@@ -219,7 +219,7 @@ async def test_reports_chat_failure_falls_back_to_logs(submit_env, monkeypatch):
 
     msg.bot.send_photo = AsyncMock(side_effect=send_photo)
 
-    await cat_commands.submit_shis_friend(msg)
+    await cat_commands.submit_shish_friend(msg)
 
     assert targets == [-555, -777]
     assert "отправлено на модерацию" in msg.answer.await_args.args[0]
@@ -229,7 +229,7 @@ async def test_reports_chat_failure_falls_back_to_logs(submit_env, monkeypatch):
 async def test_migrated_reports_group_is_retried_at_new_id(submit_env):
     from aiogram.exceptions import TelegramMigrateToChat
 
-    msg = _submit_message(photo=_photo(), caption="/submit_shis_friend")
+    msg = _submit_message(photo=_photo(), caption="/submit_shish_friend")
     targets = []
 
     async def send_photo(chat_id, file_id, **kw):
@@ -239,7 +239,7 @@ async def test_migrated_reports_group_is_retried_at_new_id(submit_env):
 
     msg.bot.send_photo = AsyncMock(side_effect=send_photo)
 
-    await cat_commands.submit_shis_friend(msg)
+    await cat_commands.submit_shish_friend(msg)
 
     assert targets == [-555, -100555]
     assert "отправлено на модерацию" in msg.answer.await_args.args[0]
